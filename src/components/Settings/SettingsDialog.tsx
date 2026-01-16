@@ -1,8 +1,8 @@
-import { X, Key, Palette, Type, Sun, Moon, Check } from 'lucide-react';
+import { X, Key, Palette, Type, Sun, Moon, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore, FONT_OPTIONS, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { Button } from '../ui/button';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export const SettingsDialog = () => {
     const {
@@ -10,6 +10,8 @@ export const SettingsDialog = () => {
         closeSettings,
         apiKey,
         setApiKey,
+        loadApiKey,
+        isApiKeyLoaded,
         theme,
         toggleTheme,
         subtitleStyle,
@@ -20,9 +22,33 @@ export const SettingsDialog = () => {
 
     const [localApiKey, setLocalApiKey] = useState(apiKey);
     const [activeTab, setActiveTab] = useState<'api' | 'theme' | 'subtitles'>('api');
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
 
-    const handleSaveApiKey = () => {
-        setApiKey(localApiKey);
+    // Load API key from IndexedDB on mount
+    useEffect(() => {
+        if (!isApiKeyLoaded) {
+            loadApiKey();
+        }
+    }, [isApiKeyLoaded, loadApiKey]);
+
+    // Sync local state with store when loaded
+    useEffect(() => {
+        if (isApiKeyLoaded) {
+            setLocalApiKey(apiKey);
+        }
+    }, [apiKey, isApiKeyLoaded]);
+
+    const handleSaveApiKey = async () => {
+        setIsSaving(true);
+        setSaveSuccess(false);
+        try {
+            await setApiKey(localApiKey);
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 2000);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const tabs = [
@@ -105,9 +131,28 @@ export const SettingsDialog = () => {
                                                 </a>
                                             </p>
                                         </div>
-                                        <Button onClick={handleSaveApiKey} className="w-full" variant="premium">
-                                            <Check size={16} className="mr-2" />
-                                            Save API Key
+                                        <Button
+                                            onClick={handleSaveApiKey}
+                                            className="w-full"
+                                            variant="premium"
+                                            disabled={isSaving}
+                                        >
+                                            {isSaving ? (
+                                                <>
+                                                    <Loader2 size={16} className="mr-2 animate-spin" />
+                                                    Saving to Database...
+                                                </>
+                                            ) : saveSuccess ? (
+                                                <>
+                                                    <Check size={16} className="mr-2" />
+                                                    Saved to Database!
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Check size={16} className="mr-2" />
+                                                    Save API Key
+                                                </>
+                                            )}
                                         </Button>
                                     </div>
                                 )}

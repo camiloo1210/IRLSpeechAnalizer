@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { apiKeyDB } from '../db/database';
 
 export type FontSize = 'sm' | 'md' | 'lg' | 'xl';
 export type Theme = 'dark' | 'light';
@@ -11,9 +12,11 @@ export interface SubtitleStyle {
 }
 
 interface SettingsState {
-    // API
+    // API (stored in IndexedDB, this is just the in-memory cache)
     apiKey: string;
-    setApiKey: (key: string) => void;
+    isApiKeyLoaded: boolean;
+    setApiKey: (key: string) => Promise<void>;
+    loadApiKey: () => Promise<void>;
 
     // Theme
     theme: Theme;
@@ -50,9 +53,17 @@ export const FONT_SIZE_OPTIONS: { value: FontSize; label: string; class: string 
 export const useSettingsStore = create<SettingsState>()(
     persist(
         (set) => ({
-            // API
+            // API Key - stored in IndexedDB
             apiKey: '',
-            setApiKey: (key) => set({ apiKey: key }),
+            isApiKeyLoaded: false,
+            setApiKey: async (key) => {
+                await apiKeyDB.set(key);
+                set({ apiKey: key });
+            },
+            loadApiKey: async () => {
+                const key = await apiKeyDB.get();
+                set({ apiKey: key || '', isApiKeyLoaded: true });
+            },
 
             // Theme
             theme: 'dark',
@@ -82,6 +93,11 @@ export const useSettingsStore = create<SettingsState>()(
         }),
         {
             name: 'irl-speech-settings',
+            // Don't persist apiKey in localStorage (it's in IndexedDB)
+            partialize: (state) => ({
+                theme: state.theme,
+                subtitleStyle: state.subtitleStyle,
+            }),
         }
     )
 );
