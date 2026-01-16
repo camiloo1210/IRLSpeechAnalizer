@@ -1,0 +1,231 @@
+import { X, Key, Palette, Type, Sun, Moon, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useSettingsStore, FONT_OPTIONS, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
+import { Button } from '../ui/button';
+import { useState } from 'react';
+
+export const SettingsDialog = () => {
+    const {
+        isSettingsOpen,
+        closeSettings,
+        apiKey,
+        setApiKey,
+        theme,
+        toggleTheme,
+        subtitleStyle,
+        setSubtitleColor,
+        setSubtitleFontSize,
+        setSubtitleFontFamily,
+    } = useSettingsStore();
+
+    const [localApiKey, setLocalApiKey] = useState(apiKey);
+    const [activeTab, setActiveTab] = useState<'api' | 'theme' | 'subtitles'>('api');
+
+    const handleSaveApiKey = () => {
+        setApiKey(localApiKey);
+    };
+
+    const tabs = [
+        { id: 'api' as const, label: 'API', icon: Key },
+        { id: 'theme' as const, label: 'Theme', icon: Palette },
+        { id: 'subtitles' as const, label: 'Subtitles', icon: Type },
+    ];
+
+    return (
+        <AnimatePresence>
+            {isSettingsOpen && (
+                <>
+                    {/* Backdrop */}
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={closeSettings}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+                    />
+
+                    {/* Dialog Wrapper - Fixed Centering */}
+                    <div
+                        className="fixed inset-0 z-[101] flex items-center justify-center p-4"
+                        onClick={(e) => e.target === e.currentTarget && closeSettings()}
+                    >
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="w-full max-w-2xl max-h-[85vh] bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-white/10">
+                                <h2 className="text-xl font-bold text-white">Settings</h2>
+                                <Button variant="ghost" size="icon" onClick={closeSettings} className="text-zinc-400 hover:text-white">
+                                    <X size={20} />
+                                </Button>
+                            </div>
+
+                            {/* Tabs */}
+                            <div className="flex border-b border-white/10">
+                                {tabs.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors
+                                        ${activeTab === tab.id
+                                                ? 'text-white border-b-2 border-indigo-500 -mb-[1px]'
+                                                : 'text-zinc-400 hover:text-white'
+                                            }`}
+                                    >
+                                        <tab.icon size={16} />
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-6 min-h-[350px] overflow-y-auto flex-1">
+                                {/* API Tab */}
+                                {activeTab === 'api' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-zinc-300 mb-2">
+                                                Soniox API Key
+                                            </label>
+                                            <input
+                                                type="password"
+                                                value={localApiKey}
+                                                onChange={(e) => setLocalApiKey(e.target.value)}
+                                                placeholder="Enter your API key..."
+                                                className="w-full px-4 py-3 bg-zinc-800 border border-white/10 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            />
+                                            <p className="mt-2 text-xs text-zinc-500">
+                                                Get your API key from{' '}
+                                                <a href="https://soniox.com" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
+                                                    soniox.com
+                                                </a>
+                                            </p>
+                                        </div>
+                                        <Button onClick={handleSaveApiKey} className="w-full" variant="premium">
+                                            <Check size={16} className="mr-2" />
+                                            Save API Key
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {/* Theme Tab */}
+                                {activeTab === 'theme' && (
+                                    <div className="space-y-4">
+                                        <label className="block text-sm font-medium text-zinc-300 mb-4">
+                                            Application Theme
+                                        </label>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <button
+                                                onClick={() => theme !== 'dark' && toggleTheme()}
+                                                className={`p-6 rounded-xl border-2 transition-all ${theme === 'dark'
+                                                    ? 'border-indigo-500 bg-indigo-500/10'
+                                                    : 'border-white/10 hover:border-white/20'
+                                                    }`}
+                                            >
+                                                <Moon size={32} className="mx-auto mb-3 text-indigo-400" />
+                                                <span className="block text-white font-medium">Dark</span>
+                                            </button>
+                                            <button
+                                                onClick={() => theme !== 'light' && toggleTheme()}
+                                                className={`p-6 rounded-xl border-2 transition-all ${theme === 'light'
+                                                    ? 'border-indigo-500 bg-indigo-500/10'
+                                                    : 'border-white/10 hover:border-white/20'
+                                                    }`}
+                                            >
+                                                <Sun size={32} className="mx-auto mb-3 text-yellow-400" />
+                                                <span className="block text-white font-medium">Light</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Subtitles Tab */}
+                                {activeTab === 'subtitles' && (
+                                    <div className="space-y-6">
+                                        {/* Color Picker */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-zinc-300 mb-2">
+                                                Text Color
+                                            </label>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="color"
+                                                    value={subtitleStyle.color}
+                                                    onChange={(e) => setSubtitleColor(e.target.value)}
+                                                    className="w-12 h-12 rounded-lg border border-white/10 cursor-pointer bg-transparent"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={subtitleStyle.color}
+                                                    onChange={(e) => setSubtitleColor(e.target.value)}
+                                                    className="flex-1 px-4 py-3 bg-zinc-800 border border-white/10 rounded-lg text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Font Size */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-zinc-300 mb-2">
+                                                Font Size
+                                            </label>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {FONT_SIZE_OPTIONS.map((size) => (
+                                                    <button
+                                                        key={size.value}
+                                                        onClick={() => setSubtitleFontSize(size.value)}
+                                                        className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${subtitleStyle.fontSize === size.value
+                                                            ? 'bg-indigo-500 text-white'
+                                                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                                                            }`}
+                                                    >
+                                                        {size.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Font Family */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-zinc-300 mb-2">
+                                                Font Family
+                                            </label>
+                                            <select
+                                                value={subtitleStyle.fontFamily}
+                                                onChange={(e) => setSubtitleFontFamily(e.target.value)}
+                                                className="w-full px-4 py-3 bg-zinc-800 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            >
+                                                {FONT_OPTIONS.map((font) => (
+                                                    <option key={font.value} value={font.value}>
+                                                        {font.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Preview */}
+                                        <div className="p-4 bg-zinc-800 rounded-lg border border-white/10">
+                                            <p className="text-xs text-zinc-500 mb-2">Preview</p>
+                                            <p
+                                                style={{
+                                                    color: subtitleStyle.color,
+                                                    fontFamily: subtitleStyle.fontFamily,
+                                                }}
+                                                className={FONT_SIZE_OPTIONS.find(s => s.value === subtitleStyle.fontSize)?.class}
+                                            >
+                                                Hello, this is a sample subtitle.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                </>
+            )}
+        </AnimatePresence>
+    );
+};
