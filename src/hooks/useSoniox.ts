@@ -1,32 +1,42 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { SonioxClient } from '../api/client';
 
 export const useSoniox = () => {
-    const clientRef = useRef<SonioxClient | null>(null);
+    const [client, setClient] = useState<SonioxClient | null>(null);
     const isStreaming = useStore((state) => state.isStreaming);
     const apiKey = useSettingsStore((state) => state.apiKey);
 
     useEffect(() => {
         // Initialize client once on mount or when API key changes
+        console.log('[useSoniox] Effect calling with API Key:', apiKey ? 'Present' : 'Missing');
+        let newClient: SonioxClient | null = null;
+
         if (apiKey) {
-            clientRef.current = new SonioxClient(apiKey);
-            clientRef.current.connect();
+            newClient = new SonioxClient(apiKey);
+            newClient.connect();
+            setClient(newClient);
         }
 
         return () => {
-            clientRef.current?.disconnect();
+            console.log('[useSoniox] Cleanup calling - Disconnecting');
+            if (newClient) {
+                newClient.disconnect();
+            }
+            setClient(null);
         };
     }, [apiKey]);
 
     useEffect(() => {
-        if (isStreaming) {
-            clientRef.current?.startStream();
-        } else {
-            clientRef.current?.stopStream();
+        if (client) {
+            if (isStreaming) {
+                client.startStream();
+            } else {
+                client.stopStream();
+            }
         }
-    }, [isStreaming]);
+    }, [isStreaming, client]);
 
-    return clientRef.current;
+    return client;
 };

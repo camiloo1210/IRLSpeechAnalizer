@@ -22,8 +22,8 @@ export const LiveStream = () => {
     const fontSizeClass = FONT_SIZE_OPTIONS.find(s => s.value === subtitleStyle.fontSize)?.class || 'text-xl';
 
     // Hooks
-    useSoniox();
-    const { hasPermission } = useAudioStream();
+    const client = useSoniox();
+    const { hasPermission } = useAudioStream(client);
 
     const endRef = useRef<HTMLDivElement>(null);
 
