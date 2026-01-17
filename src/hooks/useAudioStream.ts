@@ -66,7 +66,7 @@ export const useAudioStream = (client: SonioxClient | null) => {
             source.connect(processor);
             processor.connect(ctx.destination); // Needed for the processor to run
 
-            console.log('Audio stream started processing');
+
 
             return () => {
                 source.disconnect();

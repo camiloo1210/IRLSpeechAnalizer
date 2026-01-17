@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export interface TranscriptionNode {
     id: string;
     text: string;
+    originalText?: string; // Original text before translation (for translation mode)
     isFinal: boolean;
     timestamp: number;
     speakerId?: number; // For diarization mode
@@ -17,7 +18,7 @@ interface ChatState {
     setStreaming: (isStreaming: boolean) => void;
     setConnected: (isConnected: boolean) => void;
     addTranscriptChunk: (node: TranscriptionNode) => void;
-    updateLastChunk: (text: string, isFinal: boolean) => void;
+    updateLastChunk: (text: string, isFinal: boolean, originalText?: string) => void;
     updateLastChunkForSpeaker: (speakerId: number, text: string, isFinal: boolean) => void;
     clearTranscript: () => void;
 }
@@ -34,11 +35,16 @@ export const useStore = create<ChatState>((set) => ({
         transcript: [...state.transcript, node]
     })),
 
-    updateLastChunk: (text, isFinal) => set((state) => {
+    updateLastChunk: (text, isFinal, originalText) => set((state) => {
         const lastNode = state.transcript[state.transcript.length - 1];
         if (!lastNode) return state;
 
-        const updatedNode = { ...lastNode, text, isFinal };
+        const updatedNode = {
+            ...lastNode,
+            text,
+            isFinal,
+            ...(originalText !== undefined && { originalText })
+        };
         return {
             transcript: [...state.transcript.slice(0, -1), updatedNode]
         };

@@ -16,12 +16,65 @@ export class SonioxClient {
     private language: TranscriptionLanguage;
     private mode: SonioxMode;
     private targetLanguage: TranscriptionLanguage;
+    private configSent: boolean = false;
+    // For translation mode: track which audio segment we've seen the original for
+    // When we get a second final with same final_audio_proc_ms, it's the translation
+    private lastOriginalFinalMs: number = 0;
 
     constructor(options: SonioxClientOptions) {
         this.apiKey = options.apiKey;
         this.language = options.language;
         this.mode = options.mode;
         this.targetLanguage = options.targetLanguage || 'en';
+    }
+
+    private buildConfig(): Record<string, unknown> {
+        const config: Record<string, unknown> = {
+            api_key: this.apiKey,
+            model: 'stt-rt-v3',
+            audio_format: 'pcm_s16le',
+            sample_rate: 16000,
+            num_channels: 1,
+            include_non_final: true,
+            // Enable endpoint detection - uses AI to detect when speaker finished
+            // based on intonation, pauses, and conversational context
+            enable_endpoint_detection: true,
+        };
+
+        // Language hints - for transcription and translation source language
+        if (this.language !== 'auto') {
+            config.language_hints = [this.language];
+            config.language_hints_strict = true;
+        } else {
+            config.enable_language_identification = true;
+        }
+
+        // Mode-specific configuration
+        if (this.mode === 'translation') {
+            config.translation = {
+                type: 'one_way',
+                target_language: this.targetLanguage
+            };
+
+        } else if (this.mode === 'diarization') {
+            config.speaker_diarization = {
+                enabled: true,
+                min_speakers: 1,
+                max_speakers: 6
+            };
+
+        }
+
+        return config;
+    }
+
+    private sendConfig() {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN && !this.configSent) {
+            const config = this.buildConfig();
+
+            this.socket.send(JSON.stringify(config));
+            this.configSent = true;
+        }
     }
 
     connect() {
@@ -38,45 +91,14 @@ export class SonioxClient {
 
             this.socket.onopen = () => {
                 useStore.getState().setConnected(true);
-                console.log('[SonioxClient] Connected to Soniox with mode:', this.mode, 'language:', this.language);
 
-                // Build configuration based on mode and language settings
-                const config: Record<string, unknown> = {
-                    api_key: this.apiKey,
-                    model: 'stt-rt-v3',
-                    audio_format: 'pcm_s16le',
-                    sample_rate: 16000,
-                    num_channels: 1,
-                    include_non_final: true,
-                };
-
-                // Language hints
-                if (this.language !== 'auto') {
-                    config.language_hints = [this.language];
-                    config.language_hints_strict = true;
-                } else {
-                    config.enable_language_identification = true;
-                }
-
-                // Mode-specific configuration
-                if (this.mode === 'translation') {
-                    // Enable translation to target language
-                    config.enable_translation = true;
-                    config.translation_target_languages = [this.targetLanguage];
-                } else if (this.mode === 'diarization') {
-                    // Enable speaker diarization
-                    config.enable_speaker_diarization = true;
-                    config.min_speakers = 1;
-                    config.max_speakers = 6;
-                }
-
-                this.socket?.send(JSON.stringify(config));
+                // Config will be sent when startStream() is called
             };
 
             this.socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    console.log('[SonioxClient] Received message:', data);
+
 
                     // Handle errors from Soniox
                     if (data.error_code || data.error_message) {
@@ -85,16 +107,69 @@ export class SonioxClient {
                     }
 
                     // Handle transcripts - Soniox v3 uses 'tokens' array
+                    // For translation mode, check for 'translation' or 'translation_tokens' field
                     if (data.tokens && data.tokens.length > 0) {
                         // Extract speaker ID if available (for diarization mode)
-                        // Tokens may have speaker property when diarization is enabled
                         const speakerId = data.tokens[0]?.speaker ?? undefined;
 
-                        // Each token has 'text' property
-                        const text = data.tokens.map((t: any) => t.text).join('');
+                        // Always get original text from tokens
+                        const originalText = data.tokens.map((t: any) => t.text).join('');
+
+                        // Get translated text if in translation mode
+                        let translatedText: string | undefined;
+                        if (this.mode === 'translation') {
+                            // Log the entire translation object to understand the structure
+
+
+                            if (data.translation) {
+                                // Soniox may return translation as a string or as tokens
+                                if (typeof data.translation === 'string') {
+                                    translatedText = data.translation;
+                                } else if (data.translation.tokens) {
+                                    translatedText = data.translation.tokens.map((t: any) => t.text).join('');
+                                } else if (data.translation.text) {
+                                    translatedText = data.translation.text;
+                                }
+                            }
+                        }
+
+                        // Use translated text as main text if available, otherwise original
+                        const text = translatedText || originalText;
+
                         if (text) {
                             const store = useStore.getState();
-                            const isFinal = data.final_audio_proc_ms > 0;
+
+                            // Industry-standard approach for detecting final results:
+                            const allTokensFinal = data.tokens.every((t: any) => t.is_final === true);
+                            const audioFullyProcessed = data.final_audio_proc_ms > 0 &&
+                                data.final_audio_proc_ms === data.total_audio_proc_ms;
+                            const hasEndToken = data.tokens.some((t: any) => t.text === '<end>');
+                            const isFinal = allTokensFinal || audioFullyProcessed || hasEndToken;
+
+                            // Filter out the <end> token from display text
+                            const displayText = originalText.replace('<end>', '').trim();
+
+                            // For translation mode: Soniox sends translation as a SEPARATE final message
+                            // Pattern discovered:
+                            // - Original final:   finalMs = X, totalMs = Y (where X < Y)
+                            // - Translation final: finalMs = Y, totalMs = Y (fully processed)
+                            // When finalMs === totalMs on a final message, it's the translation
+                            let isTranslation = false;
+                            if (this.mode === 'translation' && isFinal && data.final_audio_proc_ms > 0) {
+                                // Check if this is a "fully processed" message (finalMs === totalMs)
+                                // AND it's different from the last original we saw
+                                const isFullyProcessed = data.final_audio_proc_ms === data.total_audio_proc_ms;
+
+                                if (isFullyProcessed && data.final_audio_proc_ms !== this.lastOriginalFinalMs) {
+                                    // This is the translation (fully processed, different finalMs)
+                                    isTranslation = true;
+                                } else if (!isFullyProcessed) {
+                                    // This is a new original (not fully processed yet)
+                                    this.lastOriginalFinalMs = data.final_audio_proc_ms;
+                                }
+                            }
+
+
 
                             if (this.mode === 'diarization' && speakerId !== undefined) {
                                 // For diarization, track by speaker
@@ -103,26 +178,69 @@ export class SonioxClient {
                                 );
 
                                 if (lastSpeakerNode) {
-                                    store.updateLastChunkForSpeaker(speakerId, text, isFinal);
-                                } else {
+                                    store.updateLastChunkForSpeaker(speakerId, displayText, isFinal);
+                                } else if (displayText) {
                                     store.addTranscriptChunk({
                                         id: Math.random().toString(),
-                                        text: text,
+                                        text: displayText,
                                         isFinal: isFinal,
                                         timestamp: Date.now(),
                                         speakerId: speakerId
                                     });
                                 }
-                            } else {
-                                // Standard handling for transcription/translation
+                            } else if (this.mode === 'translation') {
+                                // Translation mode: show original and translation side by side
+                                // Flow:
+                                // 1. Partials (isFinal=false): update existing non-final chunk OR create first chunk
+                                // 2. Original final (isFinal=true, isTranslation=false): update existing with original
+                                // 3. Translation (isFinal=true, isTranslation=true): update existing with translation
+
+                                const lastNode = store.transcript[store.transcript.length - 1];
+                                const hasNonFinalChunk = lastNode && !lastNode.isFinal;
+                                // Translation is complete when: isFinal=true AND text !== originalText
+                                const hasTranslationComplete = lastNode && lastNode.isFinal &&
+                                    lastNode.text !== lastNode.originalText;
+
+                                if (isTranslation && lastNode) {
+                                    // Translation received - update last chunk with translated text
+                                    store.updateLastChunk(displayText, true, lastNode.originalText || lastNode.text);
+                                } else if (isFinal && !isTranslation && hasNonFinalChunk) {
+                                    // Original final - update the partial chunk, keep as "waiting for translation"
+                                    store.updateLastChunk(displayText, true, displayText);
+                                } else if (!isFinal && hasNonFinalChunk) {
+                                    // Partial update for ongoing speech
+                                    store.updateLastChunk(displayText, false, displayText);
+                                } else if (!isFinal && (hasTranslationComplete || !lastNode)) {
+                                    // First partial of new segment after translation completed (or first ever)
+                                    store.addTranscriptChunk({
+                                        id: Math.random().toString(),
+                                        text: displayText,
+                                        originalText: displayText,
+                                        isFinal: false,
+                                        timestamp: Date.now()
+                                    });
+                                } else if (displayText && !lastNode) {
+                                    // Very first chunk
+                                    store.addTranscriptChunk({
+                                        id: Math.random().toString(),
+                                        text: displayText,
+                                        originalText: displayText,
+                                        isFinal: false,
+                                        timestamp: Date.now()
+                                    });
+                                }
+                                // Note: we ignore isFinal && !isTranslation && !hasNonFinalChunk because
+                                // the original final should have been preceded by partials
+                            } else if (displayText) {
+                                // Standard transcription mode
                                 const lastNode = store.transcript[store.transcript.length - 1];
 
                                 if (lastNode && !lastNode.isFinal) {
-                                    store.updateLastChunk(text, isFinal);
+                                    store.updateLastChunk(displayText, isFinal);
                                 } else {
                                     store.addTranscriptChunk({
                                         id: Math.random().toString(),
-                                        text: text,
+                                        text: displayText,
                                         isFinal: isFinal,
                                         timestamp: Date.now()
                                     });
@@ -140,8 +258,7 @@ export class SonioxClient {
                 useStore.getState().setConnected(false);
             };
 
-            this.socket.onclose = (event) => {
-                console.log(`[SonioxClient] Connection closed. Code: ${event.code}, Reason: ${event.reason}`);
+            this.socket.onclose = () => {
                 useStore.getState().setConnected(false);
                 useStore.getState().setStreaming(false);
                 this.socket = null;
@@ -152,10 +269,14 @@ export class SonioxClient {
     }
 
     startStream() {
-        // No explicit start_stream action needed for Soniox once connected and config sent
-        // Just start sending audio
+        // Send config and start sending audio when user initiates streaming
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            // Send config first (only once per session)
+            this.sendConfig();
             useStore.getState().setStreaming(true);
+
+        } else {
+            console.warn('[SonioxClient] Cannot start stream - socket not connected');
         }
     }
 

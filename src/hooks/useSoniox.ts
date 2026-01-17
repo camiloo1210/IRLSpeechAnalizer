@@ -13,7 +13,7 @@ export const useSoniox = () => {
 
     useEffect(() => {
         // Initialize client once on mount or when settings change
-        console.log('[useSoniox] Effect calling with API Key:', apiKey ? 'Present' : 'Missing', 'Mode:', sonioxMode, 'Language:', transcriptionLanguage);
+
         let newClient: SonioxClient | null = null;
 
         if (apiKey) {
@@ -28,7 +28,7 @@ export const useSoniox = () => {
         }
 
         return () => {
-            console.log('[useSoniox] Cleanup calling - Disconnecting');
+
             if (newClient) {
                 newClient.disconnect();
             }

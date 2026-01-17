@@ -133,10 +133,98 @@ export const LiveStream = () => {
             </header>
 
             {/* 2. Main Content Area */}
-            <main className={`relative z-10 flex-1 pt-24 pb-48 px-4 md:px-0 w-full mx-auto overflow-y-auto scrollbar-hide ${sonioxMode === 'diarization' ? 'max-w-5xl' : 'max-w-3xl'}`}>
+            <main className={`relative z-10 flex-1 pt-24 pb-48 px-4 md:px-0 w-full mx-auto overflow-y-auto scrollbar-hide ${sonioxMode === 'diarization' || sonioxMode === 'translation' ? 'max-w-5xl' : 'max-w-3xl'}`}>
 
-                {/* Diarization Split View */}
-                {sonioxMode === 'diarization' && speakers.length > 0 ? (
+                {/* Translation Split View */}
+                {sonioxMode === 'translation' ? (
+                    <div className="grid grid-cols-2 gap-6 min-h-full">
+                        {/* Original Language Column */}
+                        <div className="flex flex-col">
+                            <div className="sticky top-0 z-10 p-3 mb-4 rounded-xl border bg-amber-500/10 border-amber-500/30 backdrop-blur-sm">
+                                <span className="font-bold text-amber-400">
+                                    🎤 Original
+                                </span>
+                            </div>
+                            <div className="flex-1 flex flex-col justify-end">
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                    {transcript.map((node, index) => (
+                                        <motion.div
+                                            key={`orig-${node.id || index}`}
+                                            initial={{ opacity: 0, x: -20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            className="group mb-4"
+                                        >
+                                            <div className={`relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
+                                                ? 'bg-amber-500/10 border-amber-500/20'
+                                                : 'bg-indigo-500/10 border-indigo-500/20'
+                                                }`}>
+                                                <p
+                                                    className={`leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
+                                                    style={{
+                                                        color: subtitleStyle.color,
+                                                        fontFamily: subtitleStyle.fontFamily,
+                                                    }}
+                                                >
+                                                    {node.originalText || node.text}
+                                                    {!node.isFinal && <span className="inline-block w-2 h-4 ml-1 bg-amber-400 animate-pulse align-middle" />}
+                                                </p>
+                                                <div className="mt-2">
+                                                    <span className="text-[9px] font-mono font-bold text-muted-foreground/40 bg-white/5 px-2 py-0.5 rounded uppercase">
+                                                        {new Date(node.timestamp).toLocaleTimeString([], { second: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+
+                        {/* Translated Language Column */}
+                        <div className="flex flex-col">
+                            <div className="sticky top-0 z-10 p-3 mb-4 rounded-xl border bg-green-500/10 border-green-500/30 backdrop-blur-sm">
+                                <span className="font-bold text-green-400">
+                                    🌐 Translated
+                                </span>
+                            </div>
+                            <div className="flex-1 flex flex-col justify-end">
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                    {transcript.map((node, index) => (
+                                        <motion.div
+                                            key={`trans-${node.id || index}`}
+                                            initial={{ opacity: 0, x: 20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            className="group mb-4"
+                                        >
+                                            <div className={`relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
+                                                ? 'bg-green-500/10 border-green-500/20'
+                                                : 'bg-indigo-500/10 border-indigo-500/20'
+                                                }`}>
+                                                <p
+                                                    className={`leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
+                                                    style={{
+                                                        color: subtitleStyle.color,
+                                                        fontFamily: subtitleStyle.fontFamily,
+                                                    }}
+                                                >
+                                                    {node.text}
+                                                    {!node.isFinal && <span className="inline-block w-2 h-4 ml-1 bg-green-400 animate-pulse align-middle" />}
+                                                </p>
+                                                <div className="mt-2">
+                                                    <span className="text-[9px] font-mono font-bold text-muted-foreground/40 bg-white/5 px-2 py-0.5 rounded uppercase">
+                                                        {new Date(node.timestamp).toLocaleTimeString([], { second: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                        <div ref={endRef} className="col-span-2 h-4" />
+                    </div>
+                ) : sonioxMode === 'diarization' && speakers.length > 0 ? (
+                    /* Diarization Split View */
                     <div className="grid grid-cols-2 gap-6 min-h-full">
                         {speakers.slice(0, 2).map((speakerId, idx) => {
                             const color = SPEAKER_COLORS[idx % SPEAKER_COLORS.length];
