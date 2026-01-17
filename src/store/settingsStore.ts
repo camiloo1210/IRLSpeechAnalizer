@@ -50,11 +50,21 @@ interface SettingsState {
 }
 
 export const FONT_OPTIONS = [
-    { value: 'Inter', label: 'Inter (Default)' },
-    { value: 'Roboto Mono', label: 'Roboto Mono' },
-    { value: 'Georgia', label: 'Georgia' },
-    { value: 'Arial', label: 'Arial' },
-    { value: 'Courier New', label: 'Courier New' },
+    // Sans-serif (Clean, modern)
+    { value: 'Inter', label: 'Inter', category: 'Sans-serif' },
+    { value: 'Outfit', label: 'Outfit', category: 'Sans-serif' },
+    { value: 'Poppins', label: 'Poppins', category: 'Sans-serif' },
+    { value: 'Space Grotesk', label: 'Space Grotesk', category: 'Sans-serif' },
+    { value: 'Montserrat', label: 'Montserrat', category: 'Sans-serif' },
+    { value: 'Nunito', label: 'Nunito', category: 'Sans-serif' },
+    { value: 'Open Sans', label: 'Open Sans', category: 'Sans-serif' },
+    // Monospace (Technical)
+    { value: 'JetBrains Mono', label: 'JetBrains Mono', category: 'Monospace' },
+    { value: 'Roboto Mono', label: 'Roboto Mono', category: 'Monospace' },
+    { value: 'Fira Code', label: 'Fira Code', category: 'Monospace' },
+    // System fonts (Fallback)
+    { value: 'Arial', label: 'Arial', category: 'System' },
+    { value: 'Georgia', label: 'Georgia', category: 'System' },
 ];
 
 export const FONT_SIZE_OPTIONS: { value: FontSize; label: string; class: string }[] = [

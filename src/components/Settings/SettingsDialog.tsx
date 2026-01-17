@@ -1,8 +1,9 @@
 import { X, Key, Palette, Type, Sun, Moon, Check, Loader2, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSettingsStore, FONT_OPTIONS, FONT_SIZE_OPTIONS, LANGUAGE_OPTIONS, MODE_OPTIONS } from '../../store/settingsStore';
+import { useSettingsStore, FONT_SIZE_OPTIONS, LANGUAGE_OPTIONS, MODE_OPTIONS } from '../../store/settingsStore';
 import { Button } from '../ui/button';
 import { useState, useEffect } from 'react';
+import { FontCombobox } from './FontCombobox';
 
 export const SettingsDialog = () => {
     const {
@@ -192,27 +193,29 @@ export const SettingsDialog = () => {
                                             </div>
                                         </div>
 
-                                        {/* Source Language */}
-                                        <div>
-                                            <label className="block text-sm font-medium text-zinc-300 mb-4">
-                                                {sonioxMode === 'translation' ? 'Source Language' : 'Transcription Language'}
-                                            </label>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {LANGUAGE_OPTIONS.map((lang) => (
-                                                    <button
-                                                        key={lang.value}
-                                                        onClick={() => setTranscriptionLanguage(lang.value)}
-                                                        className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${transcriptionLanguage === lang.value
-                                                            ? 'border-indigo-500 bg-indigo-500/10'
-                                                            : 'border-white/10 hover:border-white/20'
-                                                            }`}
-                                                    >
-                                                        <span className="text-xl">{lang.flag}</span>
-                                                        <span className="text-white font-medium text-sm">{lang.label}</span>
-                                                    </button>
-                                                ))}
+                                        {/* Source Language - only for transcription and translation */}
+                                        {sonioxMode !== 'diarization' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-zinc-300 mb-4">
+                                                    {sonioxMode === 'translation' ? 'Source Language (Speech input)' : 'Transcription Language'}
+                                                </label>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {LANGUAGE_OPTIONS.map((lang) => (
+                                                        <button
+                                                            key={lang.value}
+                                                            onClick={() => setTranscriptionLanguage(lang.value)}
+                                                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${transcriptionLanguage === lang.value
+                                                                ? 'border-indigo-500 bg-indigo-500/10'
+                                                                : 'border-white/10 hover:border-white/20'
+                                                                }`}
+                                                        >
+                                                            <span className="text-xl">{lang.flag}</span>
+                                                            <span className="text-white font-medium text-sm">{lang.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
+                                        )}
 
                                         {/* Translation Target Language (only shown in translation mode) */}
                                         {sonioxMode === 'translation' && (
@@ -325,17 +328,10 @@ export const SettingsDialog = () => {
                                             <label className="block text-sm font-medium text-zinc-300 mb-2">
                                                 Font Family
                                             </label>
-                                            <select
+                                            <FontCombobox
                                                 value={subtitleStyle.fontFamily}
-                                                onChange={(e) => setSubtitleFontFamily(e.target.value)}
-                                                className="w-full px-4 py-3 bg-zinc-800 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            >
-                                                {FONT_OPTIONS.map((font) => (
-                                                    <option key={font.value} value={font.value}>
-                                                        {font.label}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                onChange={setSubtitleFontFamily}
+                                            />
                                         </div>
 
                                         {/* Preview */}

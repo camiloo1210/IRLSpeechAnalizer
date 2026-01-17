@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { useAudioStream } from '../../hooks/useAudioStream';
@@ -8,6 +8,16 @@ import { Button } from '../ui/button';
 import { useSoniox } from '../../hooks/useSoniox';
 import { SettingsDialog } from '../Settings/SettingsDialog';
 
+// Speaker colors for diarization mode
+const SPEAKER_COLORS = [
+    { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
+    { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+    { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400' },
+    { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
+    { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
+    { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+];
+
 export const LiveStream = () => {
     // Main Store
     const transcript = useStore((state) => state.transcript);
@@ -16,7 +26,7 @@ export const LiveStream = () => {
     const setStreaming = useStore((state) => state.setStreaming);
 
     // Settings Store
-    const { subtitleStyle, openSettings /* theme */ } = useSettingsStore();
+    const { subtitleStyle, openSettings, sonioxMode } = useSettingsStore();
 
     // Get subtitle font size class
     const fontSizeClass = FONT_SIZE_OPTIONS.find(s => s.value === subtitleStyle.fontSize)?.class || 'text-xl';
@@ -27,12 +37,60 @@ export const LiveStream = () => {
 
     const endRef = useRef<HTMLDivElement>(null);
 
+    // Get unique speakers for diarization mode
+    const speakers = useMemo(() => {
+        if (sonioxMode !== 'diarization') return [];
+        const speakerSet = new Set<number>();
+        transcript.forEach((node) => {
+            if (node.speakerId !== undefined) {
+                speakerSet.add(node.speakerId);
+            }
+        });
+        return Array.from(speakerSet).sort();
+    }, [transcript, sonioxMode]);
+
+    // Get transcripts per speaker
+    const getTranscriptBySpeaker = (speakerId: number) => {
+        return transcript.filter((node) => node.speakerId === speakerId);
+    };
+
     // Auto-scroll logic
     useEffect(() => {
         if (endRef.current) {
             endRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [transcript]);
+
+    // Render a single transcript node
+    const renderTranscriptNode = (node: typeof transcript[0], index: number, speakerColor?: typeof SPEAKER_COLORS[0]) => (
+        <motion.div
+            key={node.id || index}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="group mb-4"
+        >
+            <div className={`relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
+                ? speakerColor ? `${speakerColor.bg} ${speakerColor.border}` : 'bg-secondary/40 border-white/5 hover:bg-secondary/60'
+                : 'bg-indigo-500/10 border-indigo-500/20'
+                }`}>
+                <p
+                    className={`leading-relaxed font-medium tracking-wide ${sonioxMode === 'diarization' ? 'text-base' : fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
+                    style={{
+                        color: subtitleStyle.color,
+                        fontFamily: subtitleStyle.fontFamily,
+                    }}
+                >
+                    {node.text}
+                    {!node.isFinal && <span className="inline-block w-2 h-4 ml-1 bg-indigo-400 animate-pulse align-middle" />}
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                    <span className="text-[9px] font-mono font-bold text-muted-foreground/40 bg-white/5 px-2 py-0.5 rounded uppercase">
+                        {new Date(node.timestamp).toLocaleTimeString([], { second: '2-digit', minute: '2-digit' })}
+                    </span>
+                </div>
+            </div>
+        </motion.div>
+    );
 
     return (
         <div className="flex flex-col h-screen w-full bg-background text-foreground font-sans overflow-hidden selection:bg-indigo-500/30">
@@ -75,67 +133,66 @@ export const LiveStream = () => {
             </header>
 
             {/* 2. Main Content Area */}
-            <main className="relative z-10 flex-1 pt-24 pb-48 px-4 md:px-0 w-full max-w-3xl mx-auto overflow-y-auto scrollbar-hide">
-                <div className="min-h-full flex flex-col justify-end pb-4">
-                    <AnimatePresence mode="popLayout" initial={false}>
-                        {transcript.length === 0 && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="flex flex-col items-center justify-center py-20 text-center space-y-6"
-                            >
-                                <div className="relative group cursor-pointer" onClick={() => setStreaming(true)}>
-                                    <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500" />
-                                    <div className="relative w-28 h-28 rounded-full bg-gradient-to-b from-zinc-800 to-zinc-900 border border-white/10 flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform duration-300">
-                                        <Mic size={40} className="text-indigo-400" />
-                                    </div>
-                                </div>
-                                <div className="space-y-2 max-w-sm">
-                                    <h2 className="text-3xl font-bold text-foreground">
-                                        Start Speaking
-                                    </h2>
-                                    <p className="text-muted-foreground">
-                                        Click the microphone to begin real-time analysis.
-                                    </p>
-                                </div>
-                            </motion.div>
-                        )}
+            <main className={`relative z-10 flex-1 pt-24 pb-48 px-4 md:px-0 w-full mx-auto overflow-y-auto scrollbar-hide ${sonioxMode === 'diarization' ? 'max-w-5xl' : 'max-w-3xl'}`}>
 
-                        {transcript.map((node, index) => (
-                            <motion.div
-                                key={node.id || index}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                className="group mb-6 pl-4 md:pl-0"
-                            >
-                                <div className={`relative p-5 rounded-2xl border transition-all duration-300 ${node.isFinal
-                                    ? 'bg-secondary/40 border-white/5 hover:bg-secondary/60'
-                                    : 'bg-indigo-500/10 border-indigo-500/20'
-                                    }`}>
-                                    {/* Apply custom subtitle styles */}
-                                    <p
-                                        className={`leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
-                                        style={{
-                                            color: subtitleStyle.color,
-                                            fontFamily: subtitleStyle.fontFamily,
-                                        }}
-                                    >
-                                        {node.text}
-                                        {!node.isFinal && <span className="inline-block w-2 h-5 ml-1 bg-indigo-400 animate-pulse align-middle" />}
-                                    </p>
+                {/* Diarization Split View */}
+                {sonioxMode === 'diarization' && speakers.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-6 min-h-full">
+                        {speakers.slice(0, 2).map((speakerId, idx) => {
+                            const color = SPEAKER_COLORS[idx % SPEAKER_COLORS.length];
+                            const speakerTranscript = getTranscriptBySpeaker(speakerId);
 
-                                    <div className="mt-3 flex items-center gap-3">
-                                        <span className="text-[10px] font-mono font-bold text-muted-foreground/40 bg-white/5 px-2 py-0.5 rounded uppercase">
-                                            {new Date(node.timestamp).toLocaleTimeString([], { second: '2-digit', minute: '2-digit' })}
+                            return (
+                                <div key={speakerId} className="flex flex-col">
+                                    <div className={`sticky top-0 z-10 p-3 mb-4 rounded-xl border ${color.bg} ${color.border} backdrop-blur-sm`}>
+                                        <span className={`font-bold ${color.text}`}>
+                                            👤 Speaker {speakerId + 1}
                                         </span>
                                     </div>
+                                    <div className="flex-1 flex flex-col justify-end">
+                                        <AnimatePresence mode="popLayout" initial={false}>
+                                            {speakerTranscript.map((node, index) =>
+                                                renderTranscriptNode(node, index, color)
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
                                 </div>
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
-                    <div ref={endRef} className="h-4" />
-                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    /* Standard View */
+                    <div className="min-h-full flex flex-col justify-end pb-4">
+                        <AnimatePresence mode="popLayout" initial={false}>
+                            {transcript.length === 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className="flex flex-col items-center justify-center py-20 text-center space-y-6"
+                                >
+                                    <div className="relative group cursor-pointer" onClick={() => setStreaming(true)}>
+                                        <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500" />
+                                        <div className="relative w-28 h-28 rounded-full bg-gradient-to-b from-zinc-800 to-zinc-900 border border-white/10 flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform duration-300">
+                                            <Mic size={40} className="text-indigo-400" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 max-w-sm">
+                                        <h2 className="text-3xl font-bold text-foreground">
+                                            Start Speaking
+                                        </h2>
+                                        <p className="text-muted-foreground">
+                                            Click the microphone to begin real-time analysis.
+                                        </p>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {transcript.map((node, index) => renderTranscriptNode(node, index))}
+                        </AnimatePresence>
+                        <div ref={endRef} className="h-4" />
+                    </div>
+                )}
             </main>
 
             {/* 3. Bottom Control Dock */}

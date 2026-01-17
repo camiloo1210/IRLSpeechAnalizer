@@ -86,24 +86,47 @@ export class SonioxClient {
 
                     // Handle transcripts - Soniox v3 uses 'tokens' array
                     if (data.tokens && data.tokens.length > 0) {
+                        // Extract speaker ID if available (for diarization mode)
+                        // Tokens may have speaker property when diarization is enabled
+                        const speakerId = data.tokens[0]?.speaker ?? undefined;
+
                         // Each token has 'text' property
                         const text = data.tokens.map((t: any) => t.text).join('');
                         if (text) {
                             const store = useStore.getState();
-                            const lastNode = store.transcript[store.transcript.length - 1];
                             const isFinal = data.final_audio_proc_ms > 0;
 
-                            // If we have a pending partial chunk, update it
-                            if (lastNode && !lastNode.isFinal) {
-                                store.updateLastChunk(text, isFinal);
+                            if (this.mode === 'diarization' && speakerId !== undefined) {
+                                // For diarization, track by speaker
+                                const lastSpeakerNode = store.transcript.find(
+                                    (node) => node.speakerId === speakerId && !node.isFinal
+                                );
+
+                                if (lastSpeakerNode) {
+                                    store.updateLastChunkForSpeaker(speakerId, text, isFinal);
+                                } else {
+                                    store.addTranscriptChunk({
+                                        id: Math.random().toString(),
+                                        text: text,
+                                        isFinal: isFinal,
+                                        timestamp: Date.now(),
+                                        speakerId: speakerId
+                                    });
+                                }
                             } else {
-                                // Start a new chunk
-                                store.addTranscriptChunk({
-                                    id: Math.random().toString(),
-                                    text: text,
-                                    isFinal: isFinal,
-                                    timestamp: Date.now()
-                                });
+                                // Standard handling for transcription/translation
+                                const lastNode = store.transcript[store.transcript.length - 1];
+
+                                if (lastNode && !lastNode.isFinal) {
+                                    store.updateLastChunk(text, isFinal);
+                                } else {
+                                    store.addTranscriptChunk({
+                                        id: Math.random().toString(),
+                                        text: text,
+                                        isFinal: isFinal,
+                                        timestamp: Date.now()
+                                    });
+                                }
                             }
                         }
                     }

@@ -5,6 +5,7 @@ export interface TranscriptionNode {
     text: string;
     isFinal: boolean;
     timestamp: number;
+    speakerId?: number; // For diarization mode
 }
 
 interface ChatState {
@@ -17,6 +18,7 @@ interface ChatState {
     setConnected: (isConnected: boolean) => void;
     addTranscriptChunk: (node: TranscriptionNode) => void;
     updateLastChunk: (text: string, isFinal: boolean) => void;
+    updateLastChunkForSpeaker: (speakerId: number, text: string, isFinal: boolean) => void;
     clearTranscript: () => void;
 }
 
@@ -40,6 +42,25 @@ export const useStore = create<ChatState>((set) => ({
         return {
             transcript: [...state.transcript.slice(0, -1), updatedNode]
         };
+    }),
+
+    updateLastChunkForSpeaker: (speakerId, text, isFinal) => set((state) => {
+        // Find the last non-final chunk for this speaker (manual loop for ES compatibility)
+        let lastIndex = -1;
+        for (let i = state.transcript.length - 1; i >= 0; i--) {
+            if (state.transcript[i].speakerId === speakerId && !state.transcript[i].isFinal) {
+                lastIndex = i;
+                break;
+            }
+        }
+
+        if (lastIndex === -1) return state;
+
+        const updatedNode = { ...state.transcript[lastIndex], text, isFinal };
+        const newTranscript = [...state.transcript];
+        newTranscript[lastIndex] = updatedNode;
+
+        return { transcript: newTranscript };
     }),
 
     clearTranscript: () => set({ transcript: [] }),
