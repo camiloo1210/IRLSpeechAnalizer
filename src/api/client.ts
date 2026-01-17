@@ -1,13 +1,27 @@
 import { useStore } from '../store/useStore';
+import type { TranscriptionLanguage, SonioxMode } from '../store/settingsStore';
 
 const SONIOX_API_URL = 'wss://stt-rt.soniox.com/transcribe-websocket';
+
+export interface SonioxClientOptions {
+    apiKey: string;
+    language: TranscriptionLanguage;
+    mode: SonioxMode;
+    targetLanguage?: TranscriptionLanguage;
+}
 
 export class SonioxClient {
     private socket: WebSocket | null = null;
     private apiKey: string;
+    private language: TranscriptionLanguage;
+    private mode: SonioxMode;
+    private targetLanguage: TranscriptionLanguage;
 
-    constructor(apiKey: string) {
-        this.apiKey = apiKey;
+    constructor(options: SonioxClientOptions) {
+        this.apiKey = options.apiKey;
+        this.language = options.language;
+        this.mode = options.mode;
+        this.targetLanguage = options.targetLanguage || 'en';
     }
 
     connect() {
@@ -24,19 +38,39 @@ export class SonioxClient {
 
             this.socket.onopen = () => {
                 useStore.getState().setConnected(true);
-                console.log('[SonioxClient] Connected to Soniox');
+                console.log('[SonioxClient] Connected to Soniox with mode:', this.mode, 'language:', this.language);
 
-                // Send initial configuration
-                this.socket?.send(JSON.stringify({
+                // Build configuration based on mode and language settings
+                const config: Record<string, unknown> = {
                     api_key: this.apiKey,
                     model: 'stt-rt-v3',
                     audio_format: 'pcm_s16le',
                     sample_rate: 16000,
                     num_channels: 1,
                     include_non_final: true,
-                    language_hints: ['es'],
-                    language_hints_strict: true
-                }));
+                };
+
+                // Language hints
+                if (this.language !== 'auto') {
+                    config.language_hints = [this.language];
+                    config.language_hints_strict = true;
+                } else {
+                    config.enable_language_identification = true;
+                }
+
+                // Mode-specific configuration
+                if (this.mode === 'translation') {
+                    // Enable translation to target language
+                    config.enable_translation = true;
+                    config.translation_target_languages = [this.targetLanguage];
+                } else if (this.mode === 'diarization') {
+                    // Enable speaker diarization
+                    config.enable_speaker_diarization = true;
+                    config.min_speakers = 1;
+                    config.max_speakers = 6;
+                }
+
+                this.socket?.send(JSON.stringify(config));
             };
 
             this.socket.onmessage = (event) => {

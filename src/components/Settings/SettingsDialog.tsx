@@ -1,6 +1,6 @@
-import { X, Key, Palette, Type, Sun, Moon, Check, Loader2 } from 'lucide-react';
+import { X, Key, Palette, Type, Sun, Moon, Check, Loader2, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSettingsStore, FONT_OPTIONS, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
+import { useSettingsStore, FONT_OPTIONS, FONT_SIZE_OPTIONS, LANGUAGE_OPTIONS, MODE_OPTIONS } from '../../store/settingsStore';
 import { Button } from '../ui/button';
 import { useState, useEffect } from 'react';
 
@@ -18,10 +18,16 @@ export const SettingsDialog = () => {
         setSubtitleColor,
         setSubtitleFontSize,
         setSubtitleFontFamily,
+        transcriptionLanguage,
+        setTranscriptionLanguage,
+        sonioxMode,
+        setSonioxMode,
+        translationTargetLanguage,
+        setTranslationTargetLanguage,
     } = useSettingsStore();
 
     const [localApiKey, setLocalApiKey] = useState(apiKey);
-    const [activeTab, setActiveTab] = useState<'api' | 'theme' | 'subtitles'>('api');
+    const [activeTab, setActiveTab] = useState<'api' | 'theme' | 'subtitles' | 'mode'>('api');
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -53,6 +59,7 @@ export const SettingsDialog = () => {
 
     const tabs = [
         { id: 'api' as const, label: 'API', icon: Key },
+        { id: 'mode' as const, label: 'Mode', icon: Languages },
         { id: 'theme' as const, label: 'Theme', icon: Palette },
         { id: 'subtitles' as const, label: 'Subtitles', icon: Type },
     ];
@@ -154,6 +161,86 @@ export const SettingsDialog = () => {
                                                 </>
                                             )}
                                         </Button>
+                                    </div>
+                                )}
+
+                                {/* Mode Tab */}
+                                {activeTab === 'mode' && (
+                                    <div className="space-y-6">
+                                        {/* Soniox Mode Selection */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-zinc-300 mb-4">
+                                                Processing Mode
+                                            </label>
+                                            <div className="space-y-3">
+                                                {MODE_OPTIONS.map((mode) => (
+                                                    <button
+                                                        key={mode.value}
+                                                        onClick={() => setSonioxMode(mode.value)}
+                                                        className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${sonioxMode === mode.value
+                                                            ? 'border-indigo-500 bg-indigo-500/10'
+                                                            : 'border-white/10 hover:border-white/20'
+                                                            }`}
+                                                    >
+                                                        <span className="text-2xl">{mode.icon}</span>
+                                                        <div>
+                                                            <span className="text-white font-medium block">{mode.label}</span>
+                                                            <span className="text-zinc-400 text-sm">{mode.description}</span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Source Language */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-zinc-300 mb-4">
+                                                {sonioxMode === 'translation' ? 'Source Language' : 'Transcription Language'}
+                                            </label>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {LANGUAGE_OPTIONS.map((lang) => (
+                                                    <button
+                                                        key={lang.value}
+                                                        onClick={() => setTranscriptionLanguage(lang.value)}
+                                                        className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${transcriptionLanguage === lang.value
+                                                            ? 'border-indigo-500 bg-indigo-500/10'
+                                                            : 'border-white/10 hover:border-white/20'
+                                                            }`}
+                                                    >
+                                                        <span className="text-xl">{lang.flag}</span>
+                                                        <span className="text-white font-medium text-sm">{lang.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Translation Target Language (only shown in translation mode) */}
+                                        {sonioxMode === 'translation' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-zinc-300 mb-4">
+                                                    Target Language (Translate to)
+                                                </label>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {LANGUAGE_OPTIONS.filter(l => l.value !== 'auto').map((lang) => (
+                                                        <button
+                                                            key={lang.value}
+                                                            onClick={() => setTranslationTargetLanguage(lang.value)}
+                                                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${translationTargetLanguage === lang.value
+                                                                ? 'border-green-500 bg-green-500/10'
+                                                                : 'border-white/10 hover:border-white/20'
+                                                                }`}
+                                                        >
+                                                            <span className="text-xl">{lang.flag}</span>
+                                                            <span className="text-white font-medium text-sm">{lang.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <p className="text-xs text-zinc-500">
+                                            Changes take effect on next recording session.
+                                        </p>
                                     </div>
                                 )}
 

@@ -7,14 +7,22 @@ export const useSoniox = () => {
     const [client, setClient] = useState<SonioxClient | null>(null);
     const isStreaming = useStore((state) => state.isStreaming);
     const apiKey = useSettingsStore((state) => state.apiKey);
+    const transcriptionLanguage = useSettingsStore((state) => state.transcriptionLanguage);
+    const sonioxMode = useSettingsStore((state) => state.sonioxMode);
+    const translationTargetLanguage = useSettingsStore((state) => state.translationTargetLanguage);
 
     useEffect(() => {
-        // Initialize client once on mount or when API key changes
-        console.log('[useSoniox] Effect calling with API Key:', apiKey ? 'Present' : 'Missing');
+        // Initialize client once on mount or when settings change
+        console.log('[useSoniox] Effect calling with API Key:', apiKey ? 'Present' : 'Missing', 'Mode:', sonioxMode, 'Language:', transcriptionLanguage);
         let newClient: SonioxClient | null = null;
 
         if (apiKey) {
-            newClient = new SonioxClient(apiKey);
+            newClient = new SonioxClient({
+                apiKey,
+                language: transcriptionLanguage,
+                mode: sonioxMode,
+                targetLanguage: translationTargetLanguage,
+            });
             newClient.connect();
             setClient(newClient);
         }
@@ -26,7 +34,7 @@ export const useSoniox = () => {
             }
             setClient(null);
         };
-    }, [apiKey]);
+    }, [apiKey, transcriptionLanguage, sonioxMode, translationTargetLanguage]);
 
     useEffect(() => {
         if (client) {

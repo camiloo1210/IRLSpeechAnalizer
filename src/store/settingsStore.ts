@@ -4,6 +4,8 @@ import { apiKeyDB } from '../db/database';
 
 export type FontSize = 'sm' | 'md' | 'lg' | 'xl';
 export type Theme = 'dark' | 'light';
+export type TranscriptionLanguage = 'es' | 'en' | 'pt' | 'fr' | 'de' | 'it' | 'auto';
+export type SonioxMode = 'transcription' | 'translation' | 'diarization';
 
 export interface SubtitleStyle {
     color: string;
@@ -29,6 +31,18 @@ interface SettingsState {
     setSubtitleFontSize: (size: FontSize) => void;
     setSubtitleFontFamily: (font: string) => void;
 
+    // Transcription Language
+    transcriptionLanguage: TranscriptionLanguage;
+    setTranscriptionLanguage: (lang: TranscriptionLanguage) => void;
+
+    // Soniox Mode
+    sonioxMode: SonioxMode;
+    setSonioxMode: (mode: SonioxMode) => void;
+
+    // Translation Target Language (for translation mode)
+    translationTargetLanguage: TranscriptionLanguage;
+    setTranslationTargetLanguage: (lang: TranscriptionLanguage) => void;
+
     // Settings Dialog
     isSettingsOpen: boolean;
     openSettings: () => void;
@@ -48,6 +62,22 @@ export const FONT_SIZE_OPTIONS: { value: FontSize; label: string; class: string 
     { value: 'md', label: 'Medium', class: 'text-xl' },
     { value: 'lg', label: 'Large', class: 'text-2xl' },
     { value: 'xl', label: 'Extra Large', class: 'text-3xl' },
+];
+
+export const LANGUAGE_OPTIONS: { value: TranscriptionLanguage; label: string; flag: string }[] = [
+    { value: 'es', label: 'Español', flag: '🇪🇸' },
+    { value: 'en', label: 'English', flag: '🇺🇸' },
+    { value: 'pt', label: 'Português', flag: '🇧🇷' },
+    { value: 'fr', label: 'Français', flag: '🇫🇷' },
+    { value: 'de', label: 'Deutsch', flag: '🇩🇪' },
+    { value: 'it', label: 'Italiano', flag: '🇮🇹' },
+    { value: 'auto', label: 'Auto-detect', flag: '🌐' },
+];
+
+export const MODE_OPTIONS: { value: SonioxMode; label: string; description: string; icon: string }[] = [
+    { value: 'transcription', label: 'Transcription', description: 'Convert speech to text in the same language', icon: '🎤' },
+    { value: 'translation', label: 'Translation', description: 'Convert speech to text in another language', icon: '🌐' },
+    { value: 'diarization', label: 'Speaker Diarization', description: 'Identify and separate different speakers', icon: '👥' },
 ];
 
 export const useSettingsStore = create<SettingsState>()(
@@ -86,6 +116,18 @@ export const useSettingsStore = create<SettingsState>()(
                 subtitleStyle: { ...state.subtitleStyle, fontFamily }
             })),
 
+            // Transcription Language
+            transcriptionLanguage: 'es',
+            setTranscriptionLanguage: (transcriptionLanguage) => set({ transcriptionLanguage }),
+
+            // Soniox Mode
+            sonioxMode: 'transcription',
+            setSonioxMode: (sonioxMode) => set({ sonioxMode }),
+
+            // Translation Target Language
+            translationTargetLanguage: 'en',
+            setTranslationTargetLanguage: (translationTargetLanguage) => set({ translationTargetLanguage }),
+
             // Settings Dialog
             isSettingsOpen: false,
             openSettings: () => set({ isSettingsOpen: true }),
@@ -97,6 +139,9 @@ export const useSettingsStore = create<SettingsState>()(
             partialize: (state) => ({
                 theme: state.theme,
                 subtitleStyle: state.subtitleStyle,
+                transcriptionLanguage: state.transcriptionLanguage,
+                sonioxMode: state.sonioxMode,
+                translationTargetLanguage: state.translationTargetLanguage,
             }),
         }
     )
