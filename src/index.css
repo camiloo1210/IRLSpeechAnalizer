@@ -88,3 +88,13 @@
 .theme-light ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* Hide scrollbar for cleaner diarization columns */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

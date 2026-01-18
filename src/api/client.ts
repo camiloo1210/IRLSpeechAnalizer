@@ -57,11 +57,14 @@ export class SonioxClient {
             };
 
         } else if (this.mode === 'diarization') {
-            config.speaker_diarization = {
-                enabled: true,
-                min_speakers: 1,
-                max_speakers: 6
-            };
+            // Enable speaker diarization - Soniox uses flat boolean parameter
+            config.enable_speaker_diarization = true;
+            // Enable language identification for multilingual call center support
+            // This allows detecting different languages per speaker
+            config.enable_language_identification = true;
+            // Remove any strict language hints to allow multi-language detection
+            delete config.language_hints;
+            delete config.language_hints_strict;
 
         }
 
@@ -109,8 +112,20 @@ export class SonioxClient {
                     // Handle transcripts - Soniox v3 uses 'tokens' array
                     // For translation mode, check for 'translation' or 'translation_tokens' field
                     if (data.tokens && data.tokens.length > 0) {
+                        // DEBUG: Log full response in diarization mode
+                        if (this.mode === 'diarization') {
+                            console.log('[DIARIZATION DEBUG] Raw response:', JSON.stringify(data, null, 2));
+                            console.log('[DIARIZATION DEBUG] First token:', data.tokens[0]);
+                        }
+
                         // Extract speaker ID if available (for diarization mode)
-                        const speakerId = data.tokens[0]?.speaker ?? undefined;
+                        // Soniox returns speaker as a string ("1", "2", etc.) or number
+                        const rawSpeaker = data.tokens[0]?.speaker;
+                        const speakerId = rawSpeaker !== undefined ? Number(rawSpeaker) : undefined;
+
+                        if (this.mode === 'diarization') {
+                            console.log('[DIARIZATION DEBUG] Raw speaker:', rawSpeaker, '-> speakerId:', speakerId);
+                        }
 
                         // Always get original text from tokens
                         const originalText = data.tokens.map((t: any) => t.text).join('');

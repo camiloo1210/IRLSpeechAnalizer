@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { useAudioStream } from '../../hooks/useAudioStream';
-import { Mic, Settings, Activity, Terminal } from 'lucide-react';
+import { Mic, Settings, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../ui/button';
 import { useSoniox } from '../../hooks/useSoniox';
@@ -37,6 +37,12 @@ export const LiveStream = () => {
 
     const endRef = useRef<HTMLDivElement>(null);
 
+    // Refs for independent auto-scroll per speaker in diarization mode
+    const speaker1Ref = useRef<HTMLDivElement>(null);
+    const speaker2Ref = useRef<HTMLDivElement>(null);
+    const speaker1EndRef = useRef<HTMLDivElement>(null);
+    const speaker2EndRef = useRef<HTMLDivElement>(null);
+
     // Get unique speakers for diarization mode
     const speakers = useMemo(() => {
         if (sonioxMode !== 'diarization') return [];
@@ -54,12 +60,26 @@ export const LiveStream = () => {
         return transcript.filter((node) => node.speakerId === speakerId);
     };
 
-    // Auto-scroll logic
+    // Auto-scroll logic for standard/translation views
     useEffect(() => {
-        if (endRef.current) {
+        if (sonioxMode !== 'diarization' && endRef.current) {
             endRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [transcript]);
+    }, [transcript, sonioxMode]);
+
+    // Independent auto-scroll for diarization mode - scrolls container to bottom
+    useEffect(() => {
+        if (sonioxMode === 'diarization') {
+            // Scroll speaker 1 column to bottom
+            if (speaker1Ref.current) {
+                speaker1Ref.current.scrollTop = speaker1Ref.current.scrollHeight;
+            }
+            // Scroll speaker 2 column to bottom
+            if (speaker2Ref.current) {
+                speaker2Ref.current.scrollTop = speaker2Ref.current.scrollHeight;
+            }
+        }
+    }, [transcript, sonioxMode]);
 
     // Render a single transcript node
     const renderTranscriptNode = (node: typeof transcript[0], index: number, speakerColor?: typeof SPEAKER_COLORS[0]) => (
@@ -108,12 +128,14 @@ export const LiveStream = () => {
                 bg-background/80 backdrop-blur-md border-b border-white/5 shadow-sm">
 
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/20">
-                        <Activity size={20} className="text-white" />
-                    </div>
+                    <img
+                        src="/glu.svg"
+                        alt="Glu Logo"
+                        className="w-10 h-10 rounded-xl shadow-lg shadow-indigo-500/20"
+                    />
                     <div className="flex flex-col">
                         <h1 className="text-lg font-bold tracking-tight text-foreground leading-none">
-                            IRL Speech
+                            Glu
                         </h1>
                         <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mt-0.5">
                             Real-time AI Analysis
@@ -224,25 +246,88 @@ export const LiveStream = () => {
                         <div ref={endRef} className="col-span-2 h-4" />
                     </div>
                 ) : sonioxMode === 'diarization' && speakers.length > 0 ? (
-                    /* Diarization Split View */
-                    <div className="grid grid-cols-2 gap-6 min-h-full">
+                    /* Diarization Split View - Call Center Optimized */
+                    <div className="grid grid-cols-2 gap-4 h-full">
                         {speakers.slice(0, 2).map((speakerId, idx) => {
-                            const color = SPEAKER_COLORS[idx % SPEAKER_COLORS.length];
+                            const color = idx === 0
+                                ? { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400', accent: 'bg-indigo-500', badge: 'bg-indigo-500/20' }
+                                : { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', accent: 'bg-emerald-500', badge: 'bg-emerald-500/20' };
                             const speakerTranscript = getTranscriptBySpeaker(speakerId);
+                            const isActiveSpeaker = speakerTranscript.length > 0 && !speakerTranscript[speakerTranscript.length - 1]?.isFinal;
+                            const speakerLabel = idx === 0 ? 'Agente' : 'Cliente';
+                            const speakerIcon = idx === 0 ? '🎧' : '📞';
 
                             return (
-                                <div key={speakerId} className="flex flex-col">
-                                    <div className={`sticky top-0 z-10 p-3 mb-4 rounded-xl border ${color.bg} ${color.border} backdrop-blur-sm`}>
-                                        <span className={`font-bold ${color.text}`}>
-                                            👤 Speaker {speakerId + 1}
-                                        </span>
+                                <div key={speakerId} className="flex flex-col h-full min-h-0">
+                                    {/* Header with speaker info */}
+                                    <div className={`sticky top-0 z-10 p-3 mb-3 rounded-xl border ${color.bg} ${color.border} backdrop-blur-sm`}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xl">{speakerIcon}</span>
+                                                <span className={`font-bold ${color.text}`}>
+                                                    {speakerLabel}
+                                                </span>
+                                                {isActiveSpeaker && (
+                                                    <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${color.badge} ${color.text}`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${color.accent} animate-pulse`} />
+                                                        Hablando
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span className={`text-xs font-mono ${color.text} opacity-70`}>
+                                                {speakerTranscript.length} msgs
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 flex flex-col justify-end">
-                                        <AnimatePresence mode="popLayout" initial={false}>
-                                            {speakerTranscript.map((node, index) =>
-                                                renderTranscriptNode(node, index, color)
-                                            )}
-                                        </AnimatePresence>
+
+                                    {/* Messages container with independent scroll */}
+                                    <div
+                                        ref={idx === 0 ? speaker1Ref : speaker2Ref}
+                                        className="flex-1 overflow-y-auto scrollbar-hide pr-1"
+                                    >
+                                        <div className="flex flex-col justify-end min-h-full">
+                                            <AnimatePresence mode="popLayout" initial={false}>
+                                                {speakerTranscript.map((node, index) => (
+                                                    <motion.div
+                                                        key={node.id || index}
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        className="mb-2"
+                                                    >
+                                                        <div className={`relative p-3 rounded-lg border transition-all duration-200 ${node.isFinal
+                                                            ? `${color.bg} ${color.border}`
+                                                            : 'bg-white/5 border-white/10'
+                                                            }`}>
+                                                            {/* Compact message with inline timestamp */}
+                                                            <div className="flex gap-2 items-start min-w-0">
+                                                                <span className={`text-[10px] font-mono font-bold shrink-0 mt-0.5 ${node.isFinal ? color.text : 'text-white/40'}`}>
+                                                                    {new Date(node.timestamp).toLocaleTimeString([], {
+                                                                        hour: '2-digit',
+                                                                        minute: '2-digit',
+                                                                        second: '2-digit'
+                                                                    })}
+                                                                </span>
+                                                                <p
+                                                                    className={`flex-1 min-w-0 leading-snug text-sm font-medium break-words ${node.isFinal ? '' : 'opacity-60'}`}
+                                                                    style={{
+                                                                        color: subtitleStyle.color,
+                                                                        fontFamily: subtitleStyle.fontFamily,
+                                                                        wordBreak: 'break-word',
+                                                                        overflowWrap: 'break-word',
+                                                                    }}
+                                                                >
+                                                                    {node.text}
+                                                                    {!node.isFinal && (
+                                                                        <span className={`inline-block w-1.5 h-3 ml-1 ${color.accent} animate-pulse align-middle rounded-sm`} />
+                                                                    )}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                ))}
+                                            </AnimatePresence>
+                                            <div ref={idx === 0 ? speaker1EndRef : speaker2EndRef} className="h-2" />
+                                        </div>
                                     </div>
                                 </div>
                             );
