@@ -1,134 +1,204 @@
-# Soniox Real-Time IRL Translation Frontend Architecture
-
-![Status](https://img.shields.io/badge/Status-Proposed-blue)
-![Latency-Target](https://img.shields.io/badge/Latency-Low-green)
-![Tech-Stack](https://img.shields.io/badge/Stack-React_Vite_Rust_WASM-orange)
-
-## 📋 Executive Summary
-
-This document outlines the architectural solution for a high-performance, low-latency frontend application designed to consume the **Soniox API** for IRL (In-Real-Life) translation. The primary KPI for this architecture is **latency minimization**—ensuring the time between voice input and text display is imperceptible.
-
-To achieve "best-in-class" speed, we utilize **WebSockets/gRPC-Web** for streaming, **Rust/WASM** for potential heavy parsing (if needed across languages), and a **Signal-based** state management system to minimize React render cycles.
-
----
-
-## 🛠 Technology Stack
-
-The stack is chosen specifically for **speed** and **low overhead**.
-
-| Component | Technology | Rationale |
-|-----------|------------|-----------|
-| **Core Framework** | **React 19 (or SolidJS)** | React 19's compiler or Solid's fine-grained reactivity ensures minimal DOM overhead during rapid text updates. |
-| **Build Tool** | **Vite** | Instant server start and optimized HMR for rapid development; Rollup for production builds. |
-| **API Protocol** | **gRPC-Web / WebSockets** | Soniox streams data; HTTP/1.1 polling is unacceptable. Persistent bidirectional connections are required. |
-| **State Management** | **Zustand / Signals** | We need to update *individual text nodes* without re-rendering the entire conversation tree. |
-| **Styling** | **TailwindCSS** | Zero runtime overhead styling. |
-| **Virtualization** | **TanStack Virtual** | To handle potentially infinite conversation logs without DOM bloating. |
-| **Infrastructure** | **Vercel Edge / Cloudflare** | Deploy assets to the edge to reduce Time-To-First-Byte (TTFB). |
+<div align="center">
+  <img src="public/glu.svg" alt="Glu Logo" width="120" height="120">
+  
+  # Glu
+  
+  **Real-Time Speech Analysis & Speaker Diarization for Call Centers**
+  
+  [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](https://www.typescriptlang.org)
+  [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)](https://vitejs.dev)
+  [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://docker.com)
+  [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+</div>
 
 ---
 
-## 🏗 Architecture Proposals
+## ✨ Features
 
-### 1. High-Level Data Flow
-
-The architecture prioritizes a **direct-to-client** model where possible to avoid "middleware latency". The backend serves only to sign authentication tokens, while the frontend connects directly to the Soniox streaming servers.
-
-```mermaid
-sequenceDiagram
-    participant User as User (Microphone)
-    participant Client as Frontend Client (SPA)
-    participant Edge as Edge Auth Function
-    participant Soniox as Soniox API
-
-    Note over User, Soniox: Phase 1: Authentication (Low Latency Edge)
-    Client->>Edge: Request Ephemeral Token
-    Edge->>Soniox: Sign/Request Token
-    Soniox-->>Edge: Returns Token
-    Edge-->>Client: Returns Token
-
-    Note over User, Soniox: Phase 2: Real-Time Stream (Direct Socket)
-    Client->>Soniox: Open WebSocket/gRPC Stream (with Token)
-    User->>Client: Audio Input (Buffer)
-    Client->>Soniox: Stream Audio Chunks (Binary)
-    Soniox-->>Client: Stream Partial Transcripts (JSON)
-    
-    Note right of Client: Optimistic UI Update\n(Render immediately)
-    Client-->>User: Display Text
-```
-
-### 2. Infrastructure Diagram
-
-We propose a **Serverless/Edge** infrastructure to keep maintenance low and global availability high.
-
-```mermaid
-graph TD
-    subgraph "Client Side (Browser)"
-        UI[React UI Layer]
-        Audio[Audio Processor Worklet]
-        Socket[Socket Manager]
-        State[Signal State Store]
-    end
-
-    subgraph "Infrastructure (Vercel/AWS)"
-        CDN[Global CDN]
-        Auth[Edge Auth Lambda]
-    end
-
-    subgraph "External Services"
-        API[Soniox Speech AI]
-    end
-
-    UI --> State
-    State --> UI
-    Audio -->|Raw PCM Data| Socket
-    Socket -->|Stream| API
-    CDN -->|Serve Static| UI
-    Auth -->|Token Exchange| UI
-```
+| Feature | Description |
+|---------|-------------|
+| 🎤 **Real-Time Transcription** | Ultra-low latency speech-to-text with Soniox AI |
+| 👥 **Speaker Diarization** | Automatic speaker separation with call center optimized UI |
+| 🌐 **Multi-Language Support** | Automatic language detection per speaker |
+| 🔄 **Live Translation** | Real-time translation between languages |
+| 📱 **Responsive Design** | Works on desktop and mobile devices |
+| 🎨 **Customizable Subtitles** | Fonts, sizes, and colors |
 
 ---
 
-## 🚀 Performance Strategy (Low Latency)
+## 🚀 Quick Start
 
-To meet the requirement of showing translation "as fast as possible", we implement the following:
+### Prerequisites
 
-1.  **AudioWorklet API**: Processing microphone input on a separate thread from the main UI thread to prevent blocking during heavy rendering.
-2.  **Speculative Rendering**: If Soniox provides "partial" results (unfinalized text), we display them immediately in a greyed-out state and replace them with "final" results when available. This reduces *perceived* latency.
-3.  **Memoized Components**: Using `React.memo` or Signals to ensure that when a new word arrives, only the specific line or word updates, not the entire chat history.
-4.  **Network Protocol**: Use **HTTP/2** or **QUIC** if supported by the provider, otherwise standard **WSS** (Secure WebSockets).
+- [Node.js](https://nodejs.org) 20+
+- [Soniox API Key](https://soniox.com)
 
----
-
-## 🌍 "All Programming Languages" / Polyglot Support
-
-If the requirement implies displaying code snippets or handling multi-language syntax highlighting within the translation stream:
-
-*   **Tree-sitter (WASM)**: We load a WASM-based parser to detect programming languages in real-time within the text stream.
-*   **Lazy Loading**: Language grammars are loaded only when detected to keep the initial bundle size small.
-
----
-
-## 📂 Project Structure
+### Installation
 
 ```bash
-/src
-  /api          # gRPC/WebSocket client definitions
-  /audio        # AudioWorklet processors (off-main-thread processing)
-  /components
-    /LiveStream # The main optimized text renderer
-    /VirtualList # Handling long history
-  /store        # Zustand/Signal store for high-frequency updates
-  /hooks        # useAudioStream, useTranscription
+# Clone the repository
+git clone https://github.com/yourusername/glu.git
+cd glu
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env and add your SONIOX API key
+
+# Start development server
+npm run dev
 ```
 
-## 🏁 Getting Started
-
-1.  **Clone the repository**
-2.  `npm install`
-3.  Set `VITE_SONIOX_API_KEY` in `.env`
-4.  `npm run dev`
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-*Generated by Senior Architect Agent - 2026*
+## 🐳 Docker Deployment
+
+### Using Docker Compose (Recommended)
+
+```bash
+# Build and run
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+The app will be available at [http://localhost:3000](http://localhost:3000)
+
+### Using Docker CLI
+
+```bash
+# Build image
+docker build -t glu:latest .
+
+# Run container
+docker run -d -p 3000:80 --name glu glu:latest
+
+# Stop container
+docker stop glu && docker rm glu
+```
+
+---
+
+## ⚙️ Configuration
+
+Create a `.env` file in the root directory:
+
+```env
+VITE_SONIOX_API_KEY=your_soniox_api_key_here
+```
+
+You can also configure the API key directly in the app's Settings panel.
+
+---
+
+## 🏗️ Project Structure
+
+```
+glu/
+├── public/              # Static assets
+│   └── glu.svg         # App logo
+├── src/
+│   ├── api/            # Soniox WebSocket client
+│   ├── components/
+│   │   ├── LiveStream/ # Main transcription UI
+│   │   ├── Settings/   # Configuration dialog
+│   │   └── ui/         # Reusable UI components
+│   ├── hooks/          # React hooks
+│   ├── store/          # Zustand state management
+│   └── db/             # IndexedDB for local storage
+├── Dockerfile          # Production Docker image
+├── docker-compose.yml  # Docker Compose config
+└── nginx.conf          # Nginx configuration
+```
+
+---
+
+## 🎯 Operating Modes
+
+### 1. Transcription Mode
+Standard speech-to-text in the selected language.
+
+### 2. Translation Mode
+Real-time translation showing original and translated text side-by-side.
+
+### 3. Speaker Diarization Mode
+Optimized for call centers:
+- **Two-column layout** (Agent | Customer)
+- **Auto-scroll** per speaker column
+- **Speaking indicator** showing who's active
+- **Message timestamps** for quick reference
+
+---
+
+## 🛠️ Development
+
+```bash
+# Start dev server with hot reload
+npm run dev
+
+# Type checking
+npm run build
+
+# Linting
+npm run lint
+
+# Production preview
+npm run preview
+```
+
+---
+
+## 📦 Build
+
+```bash
+# Create production build
+npm run build
+
+# Output will be in ./dist
+```
+
+---
+
+## 🔧 Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| **React 19** | UI Framework with latest features |
+| **TypeScript** | Type-safe development |
+| **Vite** | Fast build tool and dev server |
+| **Zustand** | Lightweight state management |
+| **TailwindCSS** | Utility-first styling |
+| **Framer Motion** | Smooth animations |
+| **Dexie.js** | IndexedDB wrapper for local storage |
+| **Soniox API** | Real-time speech recognition |
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+  <strong>Built with ❤️ for Call Centers</strong>
+</div>
