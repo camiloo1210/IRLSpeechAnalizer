@@ -26,6 +26,7 @@ export const LiveStream = () => {
     const isStreaming = useStore((state) => state.isStreaming);
     const isConnected = useStore((state) => state.isConnected);
     const showDisconnectedPopup = useStore((state) => state.showDisconnectedPopup);
+    const setShowDisconnectedPopup = useStore((state) => state.setShowDisconnectedPopup);
     const setStreaming = useStore((state) => state.setStreaming);
     const clearTranscript = useStore((state) => state.clearTranscript);
 
@@ -187,46 +188,34 @@ export const LiveStream = () => {
             {/* Settings Dialog */}
             <SettingsDialog />
 
-            {/* Disconnected Popup */}
+            {/* Disconnected Toast Notification */}
             <AnimatePresence>
                 {showDisconnectedPopup && (
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                        initial={{ opacity: 0, y: 50, x: 20 }}
+                        animate={{ opacity: 1, y: 0, x: 0 }}
+                        exit={{ opacity: 0, y: 20, x: 20 }}
+                        className="fixed bottom-24 right-4 z-[100] max-w-sm"
                     >
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                            className="bg-zinc-900 border border-red-500/30 rounded-2xl p-8 max-w-md mx-4 shadow-2xl shadow-red-500/10"
-                        >
-                            <div className="flex flex-col items-center text-center space-y-6">
-                                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
-                                    <AlertTriangle className="w-8 h-8 text-red-400" />
-                                </div>
-                                <div className="space-y-2">
-                                    <h2 className="text-xl font-bold text-white">
-                                        Conexión Perdida
-                                    </h2>
-                                    <p className="text-zinc-400">
-                                        Se ha cerrado la conexión con la API de transcripción.
-                                    </p>
-                                </div>
-                                <div className="w-full p-4 rounded-xl bg-zinc-800/50 border border-zinc-700">
-                                    <p className="text-sm text-zinc-300">
-                                        Presiona <kbd className="px-2 py-1 mx-1 bg-zinc-700 rounded font-mono text-white">F5</kbd> para recargar y continuar.
-                                    </p>
-                                </div>
-                                <Button
-                                    onClick={() => window.location.reload()}
-                                    className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-6 rounded-xl"
-                                >
-                                    Recargar Página
-                                </Button>
+                        <div className="bg-zinc-900/95 backdrop-blur-md border border-amber-500/30 rounded-xl p-4 shadow-lg shadow-black/20 flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                                <AlertTriangle className="w-4 h-4 text-amber-400" />
                             </div>
-                        </motion.div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-white">
+                                    Conexión finalizada
+                                </p>
+                                <p className="text-xs text-zinc-400 mt-0.5">
+                                    Presiona el micrófono para reconectar
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowDisconnectedPopup(false)}
+                                className="text-zinc-500 hover:text-white transition-colors p-1 -mr-1 -mt-1"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
