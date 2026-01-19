@@ -28,6 +28,7 @@ interface ChatState {
     updateLastChunk: (text: string, isFinal: boolean, originalText?: string, language?: string, speakerId?: number, tokenCount?: number, startTime?: number, endTime?: number) => void;
     updateLastChunkForSpeaker: (speakerId: number, text: string, isFinal: boolean) => void;
     updateLastChunkForLanguage: (language: string, text: string, isFinal: boolean) => void;
+    finalizeChunksForLanguage: (language: string) => void;
     clearTranscript: () => void;
 }
 
@@ -76,17 +77,27 @@ export const useStore = create<ChatState>((set) => ({
         };
     }),
 
-    updateLastChunkForSpeaker: (_speakerId, text, isFinal) => set((state) => {
-        // Find the last non-final chunk for this speaker (manual loop for ES compatibility)
+    updateLastChunkForSpeaker: (speakerId, text, isFinal) => set((state) => {
+        // Find the last non-final chunk for THIS SPECIFIC speaker
         let lastIndex = -1;
         for (let i = state.transcript.length - 1; i >= 0; i--) {
-            if (!state.transcript[i].isFinal) {
+            if (state.transcript[i].speakerId === speakerId && !state.transcript[i].isFinal) {
                 lastIndex = i;
                 break;
             }
         }
 
-        if (lastIndex === -1) return state;
+        // If no non-final chunk found for this speaker, CREATE a new one
+        if (lastIndex === -1) {
+            const newChunk: TranscriptionNode = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                text: text.trim(),
+                isFinal,
+                speakerId,
+                timestamp: Date.now(),
+            };
+            return { transcript: [...state.transcript, newChunk] };
+        }
 
         const currentNode = state.transcript[lastIndex];
         const existingText = currentNode.text;
@@ -177,17 +188,64 @@ export const useStore = create<ChatState>((set) => ({
         return { transcript: newTranscript };
     }),
 
-    updateLastChunkForLanguage: (_language, text, isFinal) => set((state) => {
-        // Find the last non-final chunk for this language
+    updateLastChunkForLanguage: (language, text, isFinal) => set((state) => {
+        // Find the last non-final chunk for THIS SPECIFIC language
         let lastIndex = -1;
         for (let i = state.transcript.length - 1; i >= 0; i--) {
-            if (!state.transcript[i].isFinal) {
+            if (state.transcript[i].language === language && !state.transcript[i].isFinal) {
                 lastIndex = i;
                 break;
             }
         }
 
-        if (lastIndex === -1) return state;
+
+        // If no non-final chunk found for this language, check for duplicates before creating
+        if (lastIndex === -1) {
+            const newTextTrimmed = text.trim();
+            const newTextLower = newTextTrimmed.toLowerCase();
+
+            // Normalize punctuation for comparison
+            const normalizePunctuation = (t: string) =>
+                t.replace(/[.,;:!?¿¡]/g, '').replace(/\s+/g, ' ').trim();
+            const newTextNormalized = normalizePunctuation(newTextLower);
+
+            // Check if this text already exists in any finalized chunk for this language
+            const isDuplicate = state.transcript.some(node => {
+                if (!node.isFinal || node.language !== language) return false;
+                const nodeTextLower = node.text.toLowerCase().trim();
+                const nodeTextNormalized = normalizePunctuation(nodeTextLower);
+
+                // Exact or near-exact match
+                if (nodeTextLower === newTextLower) return true;
+                if (nodeTextNormalized === newTextNormalized) return true;
+
+                // New text is substring of existing (content already captured)
+                if (nodeTextNormalized.includes(newTextNormalized)) return true;
+
+                // Lengths within 5 chars and one starts with the other
+                if (Math.abs(nodeTextLower.length - newTextLower.length) <= 5) {
+                    const shorter = nodeTextLower.length < newTextLower.length ? nodeTextLower : newTextLower;
+                    const longer = nodeTextLower.length >= newTextLower.length ? nodeTextLower : newTextLower;
+                    if (longer.startsWith(shorter)) return true;
+                }
+
+                return false;
+            });
+
+            // Skip creating duplicate chunk
+            if (isDuplicate) {
+                return { transcript: state.transcript };
+            }
+
+            const newChunk: TranscriptionNode = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                text: newTextTrimmed,
+                isFinal,
+                language,
+                timestamp: Date.now(),
+            };
+            return { transcript: [...state.transcript, newChunk] };
+        }
 
         const currentNode = state.transcript[lastIndex];
         const existingText = currentNode.text;
@@ -253,6 +311,19 @@ export const useStore = create<ChatState>((set) => ({
         newTranscript[lastIndex] = updatedNode;
 
         return { transcript: newTranscript };
+    }),
+
+    // Finalize all non-final chunks for a specific language
+    finalizeChunksForLanguage: (language) => set((state) => {
+        let modified = false;
+        const newTranscript = state.transcript.map(node => {
+            if (node.language === language && !node.isFinal) {
+                modified = true;
+                return { ...node, isFinal: true };
+            }
+            return node;
+        });
+        return modified ? { transcript: newTranscript } : state;
     }),
 
     clearTranscript: () => set({ transcript: [] }),

@@ -96,8 +96,8 @@ export class SonioxClient {
             // Usar los idiomas seleccionados por el usuario para diarization
             if (this.diarizationLanguages.length > 0) {
                 config.language_hints = this.diarizationLanguages;
-                // No usar strict para permitir detección flexible
-                config.language_hints_strict = false;
+                // Usar strict para forzar detección solo de idiomas configurados
+                config.language_hints_strict = true;
             }
             // Enable language identification for multilingual support
             config.enable_language_identification = true;
@@ -236,8 +236,28 @@ export class SonioxClient {
 
 
                             if (this.mode === 'diarization') {
-                                // Get detected language from response
-                                const detectedLanguage = data.language || data.tokens[0]?.language || 'unknown';
+                                // IMPROVED: Get detected language using MAJORITY VOTE across all tokens
+                                // This prevents language oscillation in partial updates
+                                const languageCounts: Record<string, number> = {};
+                                for (const token of data.tokens) {
+                                    const lang = token.language || 'unknown';
+                                    languageCounts[lang] = (languageCounts[lang] || 0) + 1;
+                                }
+
+                                // Find language with most tokens
+                                let detectedLanguage = 'unknown';
+                                let maxCount = 0;
+                                for (const [lang, count] of Object.entries(languageCounts)) {
+                                    if (count > maxCount) {
+                                        maxCount = count;
+                                        detectedLanguage = lang;
+                                    }
+                                }
+
+                                // Fallback to response-level or first token language
+                                if (detectedLanguage === 'unknown') {
+                                    detectedLanguage = data.language || data.tokens[0]?.language || 'unknown';
+                                }
 
                                 // Log what we're about to do
                                 addDebugLog('[DIARIZATION] Processing chunk', {
@@ -246,6 +266,7 @@ export class SonioxClient {
                                     isFinal,
                                     speakerId,
                                     detectedLanguage,
+                                    languageCounts,
                                     tokenCount: data.tokens?.length,
                                     divisionMode: this.diarizationDivisionMode,
                                     transcriptLength: store.transcript.length,
@@ -254,24 +275,206 @@ export class SonioxClient {
                                 });
 
                                 if (this.diarizationDivisionMode === 'language') {
-                                    // Group by detected language
-                                    const lastLanguageNode = store.transcript.find(
-                                        (node) => node.language === detectedLanguage && !node.isFinal
-                                    );
+                                    // IMPROVED: Group consecutive tokens by their individual language
+                                    // This allows splitting a single response into multiple language chunks
+                                    interface TokenGroup {
+                                        language: string;
+                                        text: string;
+                                        tokenCount: number;
+                                    }
 
-                                    if (lastLanguageNode) {
-                                        addDebugLog('[DIARIZATION] Updating language chunk', { language: detectedLanguage, newTextLen: displayText.length, existingTextLen: lastLanguageNode.text.length });
-                                        store.updateLastChunkForLanguage(detectedLanguage, displayText, isFinal);
-                                    } else if (displayText) {
-                                        addDebugLog('[DIARIZATION] Creating NEW language chunk', { language: detectedLanguage, text: displayText.substring(0, 50) });
-                                        store.addTranscriptChunk({
-                                            id: Math.random().toString(),
-                                            text: displayText,
-                                            isFinal: isFinal,
-                                            timestamp: Date.now(),
-                                            language: detectedLanguage,
-                                            tokenCount: data.tokens?.length || 0
+                                    const tokenGroups: TokenGroup[] = [];
+                                    let currentGroup: TokenGroup | null = null;
+
+                                    for (const token of data.tokens) {
+                                        const tokenLang = token.language || 'unknown';
+                                        const tokenText = token.text || '';
+
+                                        // Skip <end> tokens
+                                        if (tokenText === '<end>') continue;
+
+                                        if (!currentGroup || currentGroup.language !== tokenLang) {
+                                            // Start a new group
+                                            if (currentGroup) {
+                                                tokenGroups.push(currentGroup);
+                                            }
+                                            currentGroup = {
+                                                language: tokenLang,
+                                                text: tokenText,
+                                                tokenCount: 1
+                                            };
+                                        } else {
+                                            // Append to current group
+                                            currentGroup.text += tokenText;
+                                            currentGroup.tokenCount++;
+                                        }
+                                    }
+
+                                    // Don't forget the last group
+                                    if (currentGroup) {
+                                        tokenGroups.push(currentGroup);
+                                    }
+
+                                    addDebugLog('[DIARIZATION] Token groups by language', {
+                                        groupCount: tokenGroups.length,
+                                        groups: tokenGroups.map(g => ({ lang: g.language, text: g.text.substring(0, 30), count: g.tokenCount }))
+                                    });
+
+                                    // AUTO-FINALIZE: Only finalize when we have a SUBSTANTIAL language change
+                                    // Require minimum 5 tokens in the new language to avoid false positives
+                                    const MIN_TOKENS_FOR_LANGUAGE_CHANGE = 5;
+                                    if (tokenGroups.length > 1) {
+                                        const lastGroup = tokenGroups[tokenGroups.length - 1];
+                                        // Only finalize previous languages if the NEW language has enough tokens
+                                        if (lastGroup.tokenCount >= MIN_TOKENS_FOR_LANGUAGE_CHANGE) {
+                                            for (let i = 0; i < tokenGroups.length - 1; i++) {
+                                                const prevGroup = tokenGroups[i];
+                                                if (prevGroup.language !== lastGroup.language) {
+                                                    addDebugLog('[DIARIZATION] AUTO-FINALIZING chunks due to language change', {
+                                                        finalizingLanguage: prevGroup.language,
+                                                        newLanguage: lastGroup.language,
+                                                        newLanguageTokenCount: lastGroup.tokenCount
+                                                    });
+                                                    store.finalizeChunksForLanguage(prevGroup.language);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Process each language group separately
+                                    for (const group of tokenGroups) {
+                                        const groupText = group.text.trim();
+                                        if (!groupText) continue;
+
+                                        // DEDUPLICATION: Multi-level duplicate detection
+                                        const groupTextLower = groupText.toLowerCase().trim();
+                                        const textPrefix = groupTextLower.substring(0, 30).trim();
+
+                                        // Check 0: EXACT or near-exact match (highest priority)
+                                        // This catches when Soniox sends the same text again after finalization
+                                        const isExactOrSimilarDuplicate = store.transcript.some(node => {
+                                            if (!node.isFinal || node.language !== group.language) return false;
+                                            const nodeTextLower = node.text.toLowerCase().trim();
+                                            // Exact match
+                                            if (nodeTextLower === groupTextLower) return true;
+                                            // Near-exact: lengths within 5 chars and one starts with the other
+                                            if (Math.abs(nodeTextLower.length - groupTextLower.length) <= 5) {
+                                                const shorter = nodeTextLower.length < groupTextLower.length ? nodeTextLower : groupTextLower;
+                                                const longer = nodeTextLower.length >= groupTextLower.length ? nodeTextLower : groupTextLower;
+                                                if (longer.startsWith(shorter)) return true;
+                                            }
+                                            return false;
                                         });
+
+                                        if (isExactOrSimilarDuplicate) {
+                                            addDebugLog('[DIARIZATION] SKIPPING duplicate (exact/similar match)', {
+                                                text: groupText.substring(0, 50),
+                                                language: group.language
+                                            });
+                                            continue;
+                                        }
+
+                                        // Check 1: Prefix match (exact start)
+                                        const isPrefixDuplicate = store.transcript.some(node =>
+                                            node.isFinal &&
+                                            node.language === group.language &&
+                                            node.text.toLowerCase().startsWith(textPrefix)
+                                        );
+
+                                        if (isPrefixDuplicate) {
+                                            addDebugLog('[DIARIZATION] SKIPPING duplicate (prefix match)', {
+                                                text: groupText.substring(0, 50),
+                                                language: group.language
+                                            });
+                                            continue;
+                                        }
+
+                                        // Check 2: New text is CONTAINED within an existing finalized chunk
+                                        // This catches cases like "LA LUNA HACE UNOS MESES..." being part of a longer chunk
+                                        // Also normalize punctuation to handle "Juan," vs "Juan." differences
+                                        const normalizePunctuation = (text: string) =>
+                                            text.replace(/[.,;:!?¿¡]/g, '').replace(/\s+/g, ' ').trim();
+
+                                        const groupTextNormalized = normalizePunctuation(groupTextLower);
+
+                                        const isSubstringDuplicate = store.transcript.some(node => {
+                                            if (!node.isFinal || node.language !== group.language) return false;
+                                            const nodeTextLower = node.text.toLowerCase();
+                                            const nodeTextNormalized = normalizePunctuation(nodeTextLower);
+                                            // Check if new text is substantially contained in existing chunk
+                                            // Use both raw and normalized versions
+                                            return nodeTextLower.includes(groupTextLower) ||
+                                                nodeTextNormalized.includes(groupTextNormalized) ||
+                                                (groupTextLower.length > 20 && nodeTextLower.includes(groupTextLower.substring(0, 40)));
+                                        });
+
+                                        if (isSubstringDuplicate) {
+                                            addDebugLog('[DIARIZATION] SKIPPING duplicate (substring of existing)', {
+                                                text: groupText.substring(0, 50),
+                                                language: group.language
+                                            });
+                                            continue;
+                                        }
+
+                                        // Check 3: Existing finalized chunk is CONTAINED within new text
+                                        // This means we're getting an expanded version - skip if we already have the shorter one
+                                        const existingIsSubstring = store.transcript.some(node => {
+                                            if (!node.isFinal || node.language !== group.language) return false;
+                                            const nodeTextLower = node.text.toLowerCase();
+                                            // If existing chunk is wholly contained in new text, skip (we already have that content)
+                                            return groupTextLower.includes(nodeTextLower) && nodeTextLower.length > 20;
+                                        });
+
+                                        if (existingIsSubstring) {
+                                            addDebugLog('[DIARIZATION] SKIPPING duplicate (contains existing chunk)', {
+                                                text: groupText.substring(0, 50),
+                                                language: group.language
+                                            });
+                                            continue;
+                                        }
+
+                                        // Check 4: Cross-language duplicates
+                                        const isDuplicateOtherLanguage = store.transcript.some(node =>
+                                            node.isFinal &&
+                                            node.language !== group.language &&
+                                            node.text.toLowerCase().includes(textPrefix)
+                                        );
+
+                                        if (isDuplicateOtherLanguage) {
+                                            addDebugLog('[DIARIZATION] SKIPPING duplicate (other language)', {
+                                                text: groupText.substring(0, 50),
+                                                language: group.language
+                                            });
+                                            continue;
+                                        }
+
+                                        // Find last chunk for THIS specific language
+                                        const lastLangNode = [...store.transcript].reverse().find(
+                                            node => node.language === group.language && !node.isFinal
+                                        );
+
+                                        if (lastLangNode) {
+                                            // Update existing non-final chunk for this language
+                                            addDebugLog('[DIARIZATION] Updating chunk for language', {
+                                                language: group.language,
+                                                newText: groupText.substring(0, 50)
+                                            });
+                                            store.updateLastChunkForLanguage(group.language, groupText, isFinal);
+                                        } else {
+                                            // Create new chunk for this language
+                                            addDebugLog('[DIARIZATION] Creating NEW chunk for language', {
+                                                language: group.language,
+                                                text: groupText.substring(0, 50)
+                                            });
+                                            store.addTranscriptChunk({
+                                                id: Math.random().toString(),
+                                                text: groupText,
+                                                isFinal: isFinal,
+                                                timestamp: Date.now(),
+                                                language: group.language,
+                                                tokenCount: group.tokenCount
+                                            });
+                                        }
                                     }
                                 } else {
                                     // Group by speaker (default)
