@@ -3,11 +3,12 @@ import { useStore } from '../../store/useStore';
 import type { TranscriptionNode } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { useAudioStream } from '../../hooks/useAudioStream';
-import { Mic, Settings, Terminal, Download, Trash2, X } from 'lucide-react';
+import { Mic, Settings, Terminal, Download, Trash2, X, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../ui/button';
 import { useSoniox } from '../../hooks/useSoniox';
 import { SettingsDialog } from '../Settings/SettingsDialog';
+import { downloadDebugLogs } from '../../api/client';
 
 // Speaker colors for diarization mode
 const SPEAKER_COLORS = [
@@ -495,6 +496,13 @@ export const LiveStream = () => {
                                     >
                                         <Download size={16} />
                                         Exportar Texto
+                                    </button>
+                                    <button
+                                        onClick={() => { downloadDebugLogs(); setShowMenu(false); }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-amber-400 hover:bg-white/10 transition-colors"
+                                    >
+                                        <Bug size={16} />
+                                        Descargar Logs Debug
                                     </button>
                                     <button
                                         onClick={handleClear}

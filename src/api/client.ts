@@ -3,6 +3,34 @@ import type { TranscriptionLanguage, SonioxMode, DiarizationDivisionMode } from 
 
 const SONIOX_API_URL = 'wss://stt-rt.soniox.com/transcribe-websocket';
 
+// DEBUG: Log collector for deep analysis
+const debugLogs: string[] = [];
+const MAX_LOGS = 1000;
+
+function addDebugLog(message: string, data?: unknown) {
+    const timestamp = new Date().toISOString();
+    const logEntry = data
+        ? `[${timestamp}] ${message}\n${JSON.stringify(data, null, 2)}`
+        : `[${timestamp}] ${message}`;
+    debugLogs.push(logEntry);
+    if (debugLogs.length > MAX_LOGS) {
+        debugLogs.shift(); // Remove oldest
+    }
+    console.log(message, data || '');
+}
+
+// Export function to download logs
+export function downloadDebugLogs() {
+    const content = debugLogs.join('\n\n---\n\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `soniox-debug-${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 export interface SonioxClientOptions {
     apiKey: string;
     language: TranscriptionLanguage;
@@ -117,8 +145,8 @@ export class SonioxClient {
                     if (data.tokens && data.tokens.length > 0) {
                         // DEBUG: Log full response in diarization mode
                         if (this.mode === 'diarization') {
-                            console.log('[DIARIZATION DEBUG] Raw response:', JSON.stringify(data, null, 2));
-                            console.log('[DIARIZATION DEBUG] First token:', data.tokens[0]);
+                            addDebugLog('[DIARIZATION] Raw response', data);
+                            addDebugLog('[DIARIZATION] First token', data.tokens[0]);
                         }
 
                         // Extract speaker ID if available (for diarization mode)
@@ -127,7 +155,7 @@ export class SonioxClient {
                         const speakerId = rawSpeaker !== undefined ? Number(rawSpeaker) : undefined;
 
                         if (this.mode === 'diarization') {
-                            console.log('[DIARIZATION DEBUG] Raw speaker:', rawSpeaker, '-> speakerId:', speakerId);
+                            addDebugLog(`[DIARIZATION] Speaker: ${rawSpeaker} -> ${speakerId}`);
                         }
 
                         // Always get original text from tokens
@@ -193,6 +221,20 @@ export class SonioxClient {
                                 // Get detected language from response
                                 const detectedLanguage = data.language || data.tokens[0]?.language || 'unknown';
 
+                                // Log what we're about to do
+                                addDebugLog('[DIARIZATION] Processing chunk', {
+                                    displayText,
+                                    displayTextLength: displayText.length,
+                                    isFinal,
+                                    speakerId,
+                                    detectedLanguage,
+                                    tokenCount: data.tokens?.length,
+                                    divisionMode: this.diarizationDivisionMode,
+                                    transcriptLength: store.transcript.length,
+                                    lastChunkText: store.transcript[store.transcript.length - 1]?.text?.substring(0, 50),
+                                    lastChunkIsFinal: store.transcript[store.transcript.length - 1]?.isFinal
+                                });
+
                                 if (this.diarizationDivisionMode === 'language') {
                                     // Group by detected language
                                     const lastLanguageNode = store.transcript.find(
@@ -200,8 +242,10 @@ export class SonioxClient {
                                     );
 
                                     if (lastLanguageNode) {
+                                        addDebugLog('[DIARIZATION] Updating language chunk', { language: detectedLanguage, newTextLen: displayText.length, existingTextLen: lastLanguageNode.text.length });
                                         store.updateLastChunkForLanguage(detectedLanguage, displayText, isFinal);
                                     } else if (displayText) {
+                                        addDebugLog('[DIARIZATION] Creating NEW language chunk', { language: detectedLanguage, text: displayText.substring(0, 50) });
                                         store.addTranscriptChunk({
                                             id: Math.random().toString(),
                                             text: displayText,
@@ -219,8 +263,10 @@ export class SonioxClient {
                                         );
 
                                         if (lastSpeakerNode) {
+                                            addDebugLog('[DIARIZATION] Updating speaker chunk', { speakerId, newTextLen: displayText.length, existingTextLen: lastSpeakerNode.text.length });
                                             store.updateLastChunkForSpeaker(speakerId, displayText, isFinal);
                                         } else if (displayText) {
+                                            addDebugLog('[DIARIZATION] Creating NEW speaker chunk', { speakerId, text: displayText.substring(0, 50) });
                                             store.addTranscriptChunk({
                                                 id: Math.random().toString(),
                                                 text: displayText,
