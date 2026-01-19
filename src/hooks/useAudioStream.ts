@@ -2,6 +2,29 @@ import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { SonioxClient } from '../api/client';
 
+// Resample audio from source sample rate to target sample rate (16kHz for Soniox)
+function resampleBuffer(inputBuffer: Float32Array, inputSampleRate: number, outputSampleRate: number): Float32Array {
+    if (inputSampleRate === outputSampleRate) {
+        return inputBuffer;
+    }
+
+    const ratio = inputSampleRate / outputSampleRate;
+    const outputLength = Math.round(inputBuffer.length / ratio);
+    const outputBuffer = new Float32Array(outputLength);
+
+    for (let i = 0; i < outputLength; i++) {
+        const srcIndex = i * ratio;
+        const srcIndexFloor = Math.floor(srcIndex);
+        const srcIndexCeil = Math.min(srcIndexFloor + 1, inputBuffer.length - 1);
+        const t = srcIndex - srcIndexFloor;
+
+        // Linear interpolation
+        outputBuffer[i] = inputBuffer[srcIndexFloor] * (1 - t) + inputBuffer[srcIndexCeil] * t;
+    }
+
+    return outputBuffer;
+}
+
 export const useAudioStream = (client: SonioxClient | null) => {
     const [hasPermission, setHasPermission] = useState(false);
     const streamRef = useRef<MediaStream | null>(null);
@@ -38,26 +61,35 @@ export const useAudioStream = (client: SonioxClient | null) => {
 
     useEffect(() => {
         if (isStreaming && hasPermission && streamRef.current && client) {
+            // Create AudioContext with native sample rate (don't force 16kHz)
+            // This avoids the "different sample-rate" error on some browsers/devices
             if (!audioContextRef.current) {
-                audioContextRef.current = new AudioContext({ sampleRate: 16000 });
+                audioContextRef.current = new AudioContext();
             }
 
             const ctx = audioContextRef.current;
+            const nativeSampleRate = ctx.sampleRate;
+            const targetSampleRate = 16000; // Soniox requires 16kHz
+
             const source = ctx.createMediaStreamSource(streamRef.current);
 
-            // Create ScriptProcessorNode
-            // Buffer size 4096 gives ~256ms of audio at 16kHz
-            const processor = ctx.createScriptProcessor(4096, 1, 1);
+            // Create ScriptProcessorNode with appropriate buffer size
+            const bufferSize = 4096;
+            const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
             processorRef.current = processor;
 
             processor.onaudioprocess = (e) => {
                 if (!useStore.getState().isStreaming) return;
 
                 const inputData = e.inputBuffer.getChannelData(0);
-                // Convert Float32 to Int16
-                const pcm16 = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    const s = Math.max(-1, Math.min(1, inputData[i]));
+
+                // Resample to 16kHz if needed
+                const resampledData = resampleBuffer(inputData, nativeSampleRate, targetSampleRate);
+
+                // Convert Float32 to Int16 (PCM)
+                const pcm16 = new Int16Array(resampledData.length);
+                for (let i = 0; i < resampledData.length; i++) {
+                    const s = Math.max(-1, Math.min(1, resampledData[i]));
                     pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                 }
                 client.sendAudioChunk(pcm16);
@@ -65,8 +97,6 @@ export const useAudioStream = (client: SonioxClient | null) => {
 
             source.connect(processor);
             processor.connect(ctx.destination); // Needed for the processor to run
-
-
 
             return () => {
                 source.disconnect();

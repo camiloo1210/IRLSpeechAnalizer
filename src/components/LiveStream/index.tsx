@@ -1,8 +1,8 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { useAudioStream } from '../../hooks/useAudioStream';
-import { Mic, Settings, Terminal } from 'lucide-react';
+import { Mic, Settings, Terminal, Download, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../ui/button';
 import { useSoniox } from '../../hooks/useSoniox';
@@ -24,12 +24,50 @@ export const LiveStream = () => {
     const isStreaming = useStore((state) => state.isStreaming);
     const isConnected = useStore((state) => state.isConnected);
     const setStreaming = useStore((state) => state.setStreaming);
+    const clearTranscript = useStore((state) => state.clearTranscript);
 
     // Settings Store
     const { subtitleStyle, openSettings, sonioxMode } = useSettingsStore();
 
+    // Menu state
+    const [showMenu, setShowMenu] = useState(false);
+
     // Get subtitle font size class
     const fontSizeClass = FONT_SIZE_OPTIONS.find(s => s.value === subtitleStyle.fontSize)?.class || 'text-xl';
+
+    // Export transcript as text file
+    const handleExport = () => {
+        if (transcript.length === 0) return;
+
+        let content = '';
+        if (sonioxMode === 'diarization') {
+            // Format for diarization - show speaker
+            transcript.forEach((node) => {
+                const speaker = node.speakerId === 0 ? 'Agente' : 'Cliente';
+                content += `[${speaker}] ${node.text}\n`;
+            });
+        } else {
+            // Standard format
+            transcript.forEach((node) => {
+                content += `${node.text}\n`;
+            });
+        }
+
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `glu-transcript-${new Date().toISOString().split('T')[0]}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setShowMenu(false);
+    };
+
+    // Clear transcript
+    const handleClear = () => {
+        clearTranscript();
+        setShowMenu(false);
+    };
 
     // Hooks
     const client = useSoniox();
@@ -298,30 +336,21 @@ export const LiveStream = () => {
                                                             ? `${color.bg} ${color.border}`
                                                             : 'bg-white/5 border-white/10'
                                                             }`}>
-                                                            {/* Compact message with inline timestamp */}
-                                                            <div className="flex gap-2 items-start min-w-0">
-                                                                <span className={`text-[10px] font-mono font-bold shrink-0 mt-0.5 ${node.isFinal ? color.text : 'text-white/40'}`}>
-                                                                    {new Date(node.timestamp).toLocaleTimeString([], {
-                                                                        hour: '2-digit',
-                                                                        minute: '2-digit',
-                                                                        second: '2-digit'
-                                                                    })}
-                                                                </span>
-                                                                <p
-                                                                    className={`flex-1 min-w-0 leading-snug text-sm font-medium break-words ${node.isFinal ? '' : 'opacity-60'}`}
-                                                                    style={{
-                                                                        color: subtitleStyle.color,
-                                                                        fontFamily: subtitleStyle.fontFamily,
-                                                                        wordBreak: 'break-word',
-                                                                        overflowWrap: 'break-word',
-                                                                    }}
-                                                                >
-                                                                    {node.text}
-                                                                    {!node.isFinal && (
-                                                                        <span className={`inline-block w-1.5 h-3 ml-1 ${color.accent} animate-pulse align-middle rounded-sm`} />
-                                                                    )}
-                                                                </p>
-                                                            </div>
+                                                            {/* Compact message - text only */}
+                                                            <p
+                                                                className={`leading-snug text-sm font-medium break-words ${node.isFinal ? '' : 'opacity-60'}`}
+                                                                style={{
+                                                                    color: subtitleStyle.color,
+                                                                    fontFamily: subtitleStyle.fontFamily,
+                                                                    wordBreak: 'break-word',
+                                                                    overflowWrap: 'break-word',
+                                                                }}
+                                                            >
+                                                                {node.text}
+                                                                {!node.isFinal && (
+                                                                    <span className={`inline-block w-1.5 h-3 ml-1 ${color.accent} animate-pulse align-middle rounded-sm`} />
+                                                                )}
+                                                            </p>
                                                         </div>
                                                     </motion.div>
                                                 ))}
@@ -372,9 +401,46 @@ export const LiveStream = () => {
             <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-6">
                 <div className="flex items-center justify-center gap-6 bg-black/80 backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-2xl ring-1 ring-white/5">
 
-                    <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl w-12 h-12">
-                        <Terminal size={20} />
-                    </Button>
+                    {/* Menu Button with Dropdown */}
+                    <div className="relative">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl w-12 h-12"
+                            onClick={() => setShowMenu(!showMenu)}
+                        >
+                            {showMenu ? <X size={20} /> : <Terminal size={20} />}
+                        </Button>
+
+                        {/* Dropdown Menu */}
+                        <AnimatePresence>
+                            {showMenu && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    className="absolute bottom-full left-0 mb-2 w-48 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                                >
+                                    <button
+                                        onClick={handleExport}
+                                        disabled={transcript.length === 0}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        <Download size={16} />
+                                        Exportar Texto
+                                    </button>
+                                    <button
+                                        onClick={handleClear}
+                                        disabled={transcript.length === 0}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        <Trash2 size={16} />
+                                        Limpiar Todo
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
 
                     <Button
                         size="xl"
