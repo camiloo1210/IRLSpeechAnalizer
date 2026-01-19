@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import type { TranscriptionLanguage, SonioxMode } from '../store/settingsStore';
+import type { TranscriptionLanguage, SonioxMode, DiarizationDivisionMode } from '../store/settingsStore';
 
 const SONIOX_API_URL = 'wss://stt-rt.soniox.com/transcribe-websocket';
 
@@ -8,6 +8,7 @@ export interface SonioxClientOptions {
     language: TranscriptionLanguage;
     mode: SonioxMode;
     targetLanguage?: TranscriptionLanguage;
+    diarizationDivisionMode?: DiarizationDivisionMode;
 }
 
 export class SonioxClient {
@@ -16,6 +17,7 @@ export class SonioxClient {
     private language: TranscriptionLanguage;
     private mode: SonioxMode;
     private targetLanguage: TranscriptionLanguage;
+    private diarizationDivisionMode: DiarizationDivisionMode;
     private configSent: boolean = false;
     // For translation mode: track which audio segment we've seen the original for
     // When we get a second final with same final_audio_proc_ms, it's the translation
@@ -26,6 +28,7 @@ export class SonioxClient {
         this.language = options.language;
         this.mode = options.mode;
         this.targetLanguage = options.targetLanguage || 'en';
+        this.diarizationDivisionMode = options.diarizationDivisionMode || 'speaker';
     }
 
     private buildConfig(): Record<string, unknown> {
@@ -186,22 +189,47 @@ export class SonioxClient {
 
 
 
-                            if (this.mode === 'diarization' && speakerId !== undefined) {
-                                // For diarization, track by speaker
-                                const lastSpeakerNode = store.transcript.find(
-                                    (node) => node.speakerId === speakerId && !node.isFinal
-                                );
+                            if (this.mode === 'diarization') {
+                                // Get detected language from response
+                                const detectedLanguage = data.language || data.tokens[0]?.language || 'unknown';
 
-                                if (lastSpeakerNode) {
-                                    store.updateLastChunkForSpeaker(speakerId, displayText, isFinal);
-                                } else if (displayText) {
-                                    store.addTranscriptChunk({
-                                        id: Math.random().toString(),
-                                        text: displayText,
-                                        isFinal: isFinal,
-                                        timestamp: Date.now(),
-                                        speakerId: speakerId
-                                    });
+                                if (this.diarizationDivisionMode === 'language') {
+                                    // Group by detected language
+                                    const lastLanguageNode = store.transcript.find(
+                                        (node) => node.language === detectedLanguage && !node.isFinal
+                                    );
+
+                                    if (lastLanguageNode) {
+                                        store.updateLastChunkForLanguage(detectedLanguage, displayText, isFinal);
+                                    } else if (displayText) {
+                                        store.addTranscriptChunk({
+                                            id: Math.random().toString(),
+                                            text: displayText,
+                                            isFinal: isFinal,
+                                            timestamp: Date.now(),
+                                            language: detectedLanguage,
+                                            tokenCount: data.tokens?.length || 0
+                                        });
+                                    }
+                                } else {
+                                    // Group by speaker (default)
+                                    if (speakerId !== undefined) {
+                                        const lastSpeakerNode = store.transcript.find(
+                                            (node) => node.speakerId === speakerId && !node.isFinal
+                                        );
+
+                                        if (lastSpeakerNode) {
+                                            store.updateLastChunkForSpeaker(speakerId, displayText, isFinal);
+                                        } else if (displayText) {
+                                            store.addTranscriptChunk({
+                                                id: Math.random().toString(),
+                                                text: displayText,
+                                                isFinal: isFinal,
+                                                timestamp: Date.now(),
+                                                speakerId: speakerId
+                                            });
+                                        }
+                                    }
                                 }
                             } else if (this.mode === 'translation') {
                                 // Translation mode: show original and translation side by side

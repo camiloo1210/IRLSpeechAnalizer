@@ -6,6 +6,7 @@ export type FontSize = 'sm' | 'md' | 'lg' | 'xl';
 export type Theme = 'dark' | 'light';
 export type TranscriptionLanguage = 'es' | 'en' | 'pt' | 'fr' | 'de' | 'it' | 'auto';
 export type SonioxMode = 'transcription' | 'translation' | 'diarization';
+export type DiarizationDivisionMode = 'speaker' | 'language';
 
 export interface SubtitleStyle {
     color: string;
@@ -42,6 +43,19 @@ interface SettingsState {
     // Translation Target Language (for translation mode)
     translationTargetLanguage: TranscriptionLanguage;
     setTranslationTargetLanguage: (lang: TranscriptionLanguage) => void;
+
+    // Diarization Languages (for diarization mode - which languages to detect)
+    diarizationLanguages: TranscriptionLanguage[];
+    setDiarizationLanguages: (langs: TranscriptionLanguage[]) => void;
+    toggleDiarizationLanguage: (lang: TranscriptionLanguage) => void;
+
+    // Diarization Division Mode (speaker or language)
+    diarizationDivisionMode: DiarizationDivisionMode;
+    setDiarizationDivisionMode: (mode: DiarizationDivisionMode) => void;
+
+    // Audio Input Device
+    selectedAudioDevice: string; // deviceId, empty string = default
+    setSelectedAudioDevice: (deviceId: string) => void;
 
     // Settings Dialog
     isSettingsOpen: boolean;
@@ -138,6 +152,30 @@ export const useSettingsStore = create<SettingsState>()(
             translationTargetLanguage: 'en',
             setTranslationTargetLanguage: (translationTargetLanguage) => set({ translationTargetLanguage }),
 
+            // Diarization Languages (default: Spanish and English)
+            diarizationLanguages: ['es', 'en'],
+            setDiarizationLanguages: (diarizationLanguages) => set({ diarizationLanguages }),
+            toggleDiarizationLanguage: (lang) => set((state) => {
+                const current = state.diarizationLanguages;
+                if (current.includes(lang)) {
+                    // Don't allow removing the last language
+                    if (current.length > 1) {
+                        return { diarizationLanguages: current.filter(l => l !== lang) };
+                    }
+                    return state;
+                } else {
+                    return { diarizationLanguages: [...current, lang] };
+                }
+            }),
+
+            // Diarization Division Mode (default: speaker)
+            diarizationDivisionMode: 'speaker',
+            setDiarizationDivisionMode: (diarizationDivisionMode) => set({ diarizationDivisionMode }),
+
+            // Audio Input Device (empty string = system default)
+            selectedAudioDevice: '',
+            setSelectedAudioDevice: (selectedAudioDevice) => set({ selectedAudioDevice }),
+
             // Settings Dialog
             isSettingsOpen: false,
             openSettings: () => set({ isSettingsOpen: true }),
@@ -152,6 +190,9 @@ export const useSettingsStore = create<SettingsState>()(
                 transcriptionLanguage: state.transcriptionLanguage,
                 sonioxMode: state.sonioxMode,
                 translationTargetLanguage: state.translationTargetLanguage,
+                diarizationLanguages: state.diarizationLanguages,
+                diarizationDivisionMode: state.diarizationDivisionMode,
+                selectedAudioDevice: state.selectedAudioDevice,
             }),
         }
     )

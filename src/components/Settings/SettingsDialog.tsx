@@ -1,4 +1,4 @@
-import { X, Key, Palette, Type, Sun, Moon, Check, Loader2, Languages } from 'lucide-react';
+import { X, Key, Palette, Type, Sun, Moon, Check, Loader2, Languages, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore, FONT_SIZE_OPTIONS, LANGUAGE_OPTIONS, MODE_OPTIONS } from '../../store/settingsStore';
 import { Button } from '../ui/button';
@@ -25,12 +25,22 @@ export const SettingsDialog = () => {
         setSonioxMode,
         translationTargetLanguage,
         setTranslationTargetLanguage,
+        diarizationLanguages,
+        toggleDiarizationLanguage,
+        diarizationDivisionMode,
+        setDiarizationDivisionMode,
+        selectedAudioDevice,
+        setSelectedAudioDevice,
     } = useSettingsStore();
 
     const [localApiKey, setLocalApiKey] = useState(apiKey);
     const [activeTab, setActiveTab] = useState<'api' | 'theme' | 'subtitles' | 'mode'>('api');
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+
+    // Audio devices state
+    const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+    const [isLoadingDevices, setIsLoadingDevices] = useState(false);
 
     // Load API key from IndexedDB on mount
     useEffect(() => {
@@ -45,6 +55,29 @@ export const SettingsDialog = () => {
             setLocalApiKey(apiKey);
         }
     }, [apiKey, isApiKeyLoaded]);
+
+    // Load audio devices when settings opens
+    useEffect(() => {
+        async function loadAudioDevices() {
+            if (!isSettingsOpen) return;
+
+            setIsLoadingDevices(true);
+            try {
+                // Request permission first (needed to get device labels)
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+                setAudioDevices(audioInputs);
+            } catch (err) {
+                console.error('Error loading audio devices:', err);
+            } finally {
+                setIsLoadingDevices(false);
+            }
+        }
+
+        loadAudioDevices();
+    }, [isSettingsOpen]);
 
     const handleSaveApiKey = async () => {
         setIsSaving(true);
@@ -120,7 +153,8 @@ export const SettingsDialog = () => {
                             <div className="p-6 min-h-[350px] overflow-y-auto flex-1">
                                 {/* API Tab */}
                                 {activeTab === 'api' && (
-                                    <div className="space-y-4">
+                                    <div className="space-y-6">
+                                        {/* API Key Section */}
                                         <div>
                                             <label className="block text-sm font-medium text-zinc-300 mb-2">
                                                 Soniox API Key
@@ -162,6 +196,30 @@ export const SettingsDialog = () => {
                                                 </>
                                             )}
                                         </Button>
+
+                                        {/* Audio Input Device Section */}
+                                        <div className="pt-4 border-t border-white/10">
+                                            <label className="flex items-center gap-2 text-sm font-medium text-zinc-300 mb-2">
+                                                <Mic size={16} />
+                                                Entrada de Audio
+                                            </label>
+                                            <select
+                                                value={selectedAudioDevice}
+                                                onChange={(e) => setSelectedAudioDevice(e.target.value)}
+                                                disabled={isLoadingDevices}
+                                                className="w-full px-4 py-3 bg-zinc-800 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                                            >
+                                                <option value="">Sistema (Predeterminado)</option>
+                                                {audioDevices.map((device) => (
+                                                    <option key={device.deviceId} value={device.deviceId}>
+                                                        {device.label || `Micrófono ${device.deviceId.slice(0, 8)}`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="mt-2 text-xs text-zinc-500">
+                                                Selecciona el micrófono que deseas usar para la grabación.
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
 
@@ -237,6 +295,81 @@ export const SettingsDialog = () => {
                                                             <span className="text-white font-medium text-sm">{lang.label}</span>
                                                         </button>
                                                     ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Diarization Division Mode and Languages (only shown in diarization mode) */}
+                                        {sonioxMode === 'diarization' && (
+                                            <div className="space-y-4">
+                                                {/* Division Mode Toggle */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-zinc-300 mb-2">
+                                                        Dividir Pantalla Por
+                                                    </label>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <button
+                                                            onClick={() => setDiarizationDivisionMode('speaker')}
+                                                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${diarizationDivisionMode === 'speaker'
+                                                                ? 'border-indigo-500 bg-indigo-500/10'
+                                                                : 'border-white/10 hover:border-white/20'
+                                                                }`}
+                                                        >
+                                                            <span className="text-xl">👥</span>
+                                                            <div className="text-left">
+                                                                <span className="text-white font-medium text-sm block">Speaker</span>
+                                                                <span className="text-zinc-500 text-xs">Agente / Cliente</span>
+                                                            </div>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setDiarizationDivisionMode('language')}
+                                                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${diarizationDivisionMode === 'language'
+                                                                ? 'border-emerald-500 bg-emerald-500/10'
+                                                                : 'border-white/10 hover:border-white/20'
+                                                                }`}
+                                                        >
+                                                            <span className="text-xl">🌐</span>
+                                                            <div className="text-left">
+                                                                <span className="text-white font-medium text-sm block">Idioma</span>
+                                                                <span className="text-zinc-500 text-xs">Español / English</span>
+                                                            </div>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Language Selection */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-zinc-300 mb-2">
+                                                        Idiomas a Detectar
+                                                    </label>
+                                                    <p className="text-xs text-zinc-500 mb-4">
+                                                        {diarizationDivisionMode === 'language'
+                                                            ? 'Selecciona los idiomas para dividir la pantalla.'
+                                                            : 'Selecciona los idiomas que se hablarán en la llamada.'}
+                                                    </p>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        {LANGUAGE_OPTIONS.filter(l => l.value !== 'auto').map((lang) => {
+                                                            const isSelected = diarizationLanguages.includes(lang.value);
+                                                            const isLastSelected = isSelected && diarizationLanguages.length === 1;
+                                                            return (
+                                                                <button
+                                                                    key={lang.value}
+                                                                    onClick={() => toggleDiarizationLanguage(lang.value)}
+                                                                    disabled={isLastSelected}
+                                                                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${isSelected
+                                                                        ? 'border-indigo-500 bg-indigo-500/10'
+                                                                        : 'border-white/10 hover:border-white/20'
+                                                                        } ${isLastSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                >
+                                                                    <span className="text-xl">{lang.flag}</span>
+                                                                    <span className="text-white font-medium text-sm">{lang.label}</span>
+                                                                    {isSelected && (
+                                                                        <Check size={16} className="ml-auto text-indigo-400" />
+                                                                    )}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}

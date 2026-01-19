@@ -98,3 +98,24 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Force text to wrap in diarization message boxes - TARGETING P TAG DIRECTLY */
+.diarization-message p,
+.text-wrap-force {
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+}
+
+/* Ensure diarization message containers don't overflow horizontally but grow vertically */
+.diarization-message {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
+  display: block !important;
+}

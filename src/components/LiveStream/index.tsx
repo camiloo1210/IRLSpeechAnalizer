@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
+import type { TranscriptionNode } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { useAudioStream } from '../../hooks/useAudioStream';
 import { Mic, Settings, Terminal, Download, Trash2, X } from 'lucide-react';
@@ -27,7 +28,7 @@ export const LiveStream = () => {
     const clearTranscript = useStore((state) => state.clearTranscript);
 
     // Settings Store
-    const { subtitleStyle, openSettings, sonioxMode } = useSettingsStore();
+    const { subtitleStyle, openSettings, sonioxMode, diarizationDivisionMode } = useSettingsStore();
 
     // Menu state
     const [showMenu, setShowMenu] = useState(false);
@@ -81,7 +82,19 @@ export const LiveStream = () => {
     const speaker1EndRef = useRef<HTMLDivElement>(null);
     const speaker2EndRef = useRef<HTMLDivElement>(null);
 
-    // Get unique speakers for diarization mode
+    // Get unique languages for diarization mode (language-based division)
+    const detectedLanguages = useMemo(() => {
+        if (sonioxMode !== 'diarization') return [];
+        const langSet = new Set<string>();
+        transcript.forEach((node) => {
+            if (node.language) {
+                langSet.add(node.language);
+            }
+        });
+        return Array.from(langSet).sort();
+    }, [transcript, sonioxMode]);
+
+    // Get unique speakers for diarization mode (speaker-based division)
     const speakers = useMemo(() => {
         if (sonioxMode !== 'diarization') return [];
         const speakerSet = new Set<number>();
@@ -93,9 +106,27 @@ export const LiveStream = () => {
         return Array.from(speakerSet).sort();
     }, [transcript, sonioxMode]);
 
+    // Get transcripts per language
+    const getTranscriptByLanguage = (language: string) => {
+        return transcript.filter((node) => node.language === language);
+    };
+
     // Get transcripts per speaker
     const getTranscriptBySpeaker = (speakerId: number) => {
         return transcript.filter((node) => node.speakerId === speakerId);
+    };
+
+    // Language display info
+    const getLanguageInfo = (lang: string) => {
+        const langMap: Record<string, { label: string; flag: string; icon: string }> = {
+            'es': { label: 'Español', flag: '🇪🇸', icon: '🎧' },
+            'en': { label: 'English', flag: '🇺🇸', icon: '📞' },
+            'pt': { label: 'Português', flag: '🇧🇷', icon: '🎤' },
+            'fr': { label: 'Français', flag: '🇫🇷', icon: '🎤' },
+            'de': { label: 'Deutsch', flag: '🇩🇪', icon: '🎤' },
+            'it': { label: 'Italiano', flag: '🇮🇹', icon: '🎤' },
+        };
+        return langMap[lang] || { label: lang.toUpperCase(), flag: '🌐', icon: '🎤' };
     };
 
     // Auto-scroll logic for standard/translation views
@@ -121,21 +152,20 @@ export const LiveStream = () => {
 
     // Render a single transcript node
     const renderTranscriptNode = (node: typeof transcript[0], index: number, speakerColor?: typeof SPEAKER_COLORS[0]) => (
-        <motion.div
-            key={node.id || index}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="group mb-4"
-        >
-            <div className={`relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
+        <div key={node.id || index} className="group mb-4 w-full" style={{ minWidth: 0 }}>
+            <div className={`diarization-message relative p-4 rounded-xl border transition-all duration-300 w-full ${node.isFinal
                 ? speakerColor ? `${speakerColor.bg} ${speakerColor.border}` : 'bg-secondary/40 border-white/5 hover:bg-secondary/60'
                 : 'bg-indigo-500/10 border-indigo-500/20'
                 }`}>
                 <p
-                    className={`leading-relaxed font-medium tracking-wide ${sonioxMode === 'diarization' ? 'text-base' : fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
+                    className={`text-wrap-force leading-relaxed font-medium tracking-wide w-full ${sonioxMode === 'diarization' ? 'text-base' : fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
                     style={{
                         color: subtitleStyle.color,
                         fontFamily: subtitleStyle.fontFamily,
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
+                        wordBreak: 'break-all',
+                        minWidth: 0
                     }}
                 >
                     {node.text}
@@ -147,7 +177,7 @@ export const LiveStream = () => {
                     </span>
                 </div>
             </div>
-        </motion.div>
+        </div>
     );
 
     return (
@@ -214,12 +244,12 @@ export const LiveStream = () => {
                                             animate={{ opacity: 1, x: 0 }}
                                             className="group mb-4"
                                         >
-                                            <div className={`relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
+                                            <div className={`diarization-message relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
                                                 ? 'bg-amber-500/10 border-amber-500/20'
                                                 : 'bg-indigo-500/10 border-indigo-500/20'
                                                 }`}>
                                                 <p
-                                                    className={`leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
+                                                    className={`text-wrap-force leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
                                                     style={{
                                                         color: subtitleStyle.color,
                                                         fontFamily: subtitleStyle.fontFamily,
@@ -256,12 +286,12 @@ export const LiveStream = () => {
                                             animate={{ opacity: 1, x: 0 }}
                                             className="group mb-4"
                                         >
-                                            <div className={`relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
+                                            <div className={`diarization-message relative p-4 rounded-xl border transition-all duration-300 ${node.isFinal
                                                 ? 'bg-green-500/10 border-green-500/20'
                                                 : 'bg-indigo-500/10 border-indigo-500/20'
                                                 }`}>
                                                 <p
-                                                    className={`leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
+                                                    className={`text-wrap-force leading-relaxed font-medium tracking-wide ${fontSizeClass} ${node.isFinal ? '' : 'opacity-70'}`}
                                                     style={{
                                                         color: subtitleStyle.color,
                                                         fontFamily: subtitleStyle.fontFamily,
@@ -283,84 +313,121 @@ export const LiveStream = () => {
                         </div>
                         <div ref={endRef} className="col-span-2 h-4" />
                     </div>
-                ) : sonioxMode === 'diarization' && speakers.length > 0 ? (
-                    /* Diarization Split View - Call Center Optimized */
-                    <div className="grid grid-cols-2 gap-4 h-full">
-                        {speakers.slice(0, 2).map((speakerId, idx) => {
-                            const color = idx === 0
-                                ? { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400', accent: 'bg-indigo-500', badge: 'bg-indigo-500/20' }
-                                : { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', accent: 'bg-emerald-500', badge: 'bg-emerald-500/20' };
-                            const speakerTranscript = getTranscriptBySpeaker(speakerId);
-                            const isActiveSpeaker = speakerTranscript.length > 0 && !speakerTranscript[speakerTranscript.length - 1]?.isFinal;
-                            const speakerLabel = idx === 0 ? 'Agente' : 'Cliente';
-                            const speakerIcon = idx === 0 ? '🎧' : '📞';
+                ) : sonioxMode === 'diarization' && (
+                    diarizationDivisionMode === 'language'
+                        ? detectedLanguages.length > 0
+                        : speakers.length > 0
+                ) ? (
+                    /* Diarization Split View - Conditional on division mode */
+                    <div className="grid grid-cols-2 gap-4 h-full min-w-0 overflow-hidden">
+                        {diarizationDivisionMode === 'language' ? (
+                            /* Language-based Division */
+                            detectedLanguages.slice(0, 2).map((language: string, idx: number) => {
+                                const color = idx === 0
+                                    ? { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400', accent: 'bg-indigo-500', badge: 'bg-indigo-500/20' }
+                                    : { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', accent: 'bg-emerald-500', badge: 'bg-emerald-500/20' };
+                                const langTranscript = getTranscriptByLanguage(language);
+                                const isActiveLang = langTranscript.length > 0 && !langTranscript[langTranscript.length - 1]?.isFinal;
+                                const langInfo = getLanguageInfo(language);
 
-                            return (
-                                <div key={speakerId} className="flex flex-col h-full min-h-0">
-                                    {/* Header with speaker info */}
-                                    <div className={`sticky top-0 z-10 p-3 mb-3 rounded-xl border ${color.bg} ${color.border} backdrop-blur-sm`}>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xl">{speakerIcon}</span>
-                                                <span className={`font-bold ${color.text}`}>
-                                                    {speakerLabel}
-                                                </span>
-                                                {isActiveSpeaker && (
-                                                    <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${color.badge} ${color.text}`}>
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${color.accent} animate-pulse`} />
-                                                        Hablando
-                                                    </span>
-                                                )}
+                                return (
+                                    <div key={language} className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+                                        <div className={`sticky top-0 z-10 p-3 mb-3 rounded-xl border ${color.bg} ${color.border} backdrop-blur-sm`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xl">{langInfo.flag}</span>
+                                                    <span className={`font-bold ${color.text}`}>{langInfo.label}</span>
+                                                    {isActiveLang && (
+                                                        <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${color.badge} ${color.text}`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${color.accent} animate-pulse`} />
+                                                            Hablando
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className={`text-xs font-mono ${color.text} opacity-70`}>{langTranscript.length} msgs</span>
                                             </div>
-                                            <span className={`text-xs font-mono ${color.text} opacity-70`}>
-                                                {speakerTranscript.length} msgs
-                                            </span>
                                         </div>
-                                    </div>
-
-                                    {/* Messages container with independent scroll */}
-                                    <div
-                                        ref={idx === 0 ? speaker1Ref : speaker2Ref}
-                                        className="flex-1 overflow-y-auto scrollbar-hide pr-1"
-                                    >
-                                        <div className="flex flex-col justify-end min-h-full">
-                                            <AnimatePresence mode="popLayout" initial={false}>
-                                                {speakerTranscript.map((node, index) => (
-                                                    <motion.div
-                                                        key={node.id || index}
-                                                        initial={{ opacity: 0, y: 10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        className="mb-2"
-                                                    >
-                                                        <div className={`relative p-3 rounded-lg border transition-all duration-200 ${node.isFinal
-                                                            ? `${color.bg} ${color.border}`
-                                                            : 'bg-white/5 border-white/10'
-                                                            }`}>
-                                                            {/* Compact message - text only */}
-                                                            <p
-                                                                className={`leading-snug text-sm font-medium break-words ${node.isFinal ? '' : 'opacity-60'}`}
+                                        <div ref={idx === 0 ? speaker1Ref : speaker2Ref} className="flex-1 overflow-y-auto scrollbar-hide pr-1 min-w-0">
+                                            <div className="flex flex-col justify-end min-h-full min-w-0">
+                                                {langTranscript.map((node: TranscriptionNode, index: number) => (
+                                                    <div key={node.id || index} className="mb-2 w-full" style={{ minWidth: 0 }}>
+                                                        <div className={`diarization-message relative p-3 rounded-lg border transition-all duration-200 w-full ${node.isFinal ? `${color.bg} ${color.border}` : 'bg-white/5 border-white/10'}`}>
+                                                            <p className={`text-wrap-force leading-snug text-sm font-medium w-full ${node.isFinal ? '' : 'opacity-60'}`}
                                                                 style={{
                                                                     color: subtitleStyle.color,
                                                                     fontFamily: subtitleStyle.fontFamily,
-                                                                    wordBreak: 'break-word',
-                                                                    overflowWrap: 'break-word',
-                                                                }}
-                                                            >
+                                                                    whiteSpace: 'pre-wrap',
+                                                                    overflowWrap: 'anywhere',
+                                                                    wordBreak: 'break-all',
+                                                                    minWidth: 0
+                                                                }}>
                                                                 {node.text}
-                                                                {!node.isFinal && (
-                                                                    <span className={`inline-block w-1.5 h-3 ml-1 ${color.accent} animate-pulse align-middle rounded-sm`} />
-                                                                )}
+                                                                {!node.isFinal && <span className={`inline-block w-1.5 h-3 ml-1 ${color.accent} animate-pulse align-middle rounded-sm`} />}
                                                             </p>
                                                         </div>
-                                                    </motion.div>
+                                                    </div>
                                                 ))}
-                                            </AnimatePresence>
-                                            <div ref={idx === 0 ? speaker1EndRef : speaker2EndRef} className="h-2" />
+                                                <div ref={idx === 0 ? speaker1EndRef : speaker2EndRef} className="h-2" />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })
+                        ) : (
+                            /* Speaker-based Division */
+                            speakers.slice(0, 2).map((speakerId: number, idx: number) => {
+                                const color = idx === 0
+                                    ? { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400', accent: 'bg-indigo-500', badge: 'bg-indigo-500/20' }
+                                    : { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', accent: 'bg-emerald-500', badge: 'bg-emerald-500/20' };
+                                const speakerTranscript = getTranscriptBySpeaker(speakerId);
+                                const isActiveSpeaker = speakerTranscript.length > 0 && !speakerTranscript[speakerTranscript.length - 1]?.isFinal;
+                                const speakerLabel = idx === 0 ? 'Agente' : 'Cliente';
+                                const speakerIcon = idx === 0 ? '🎧' : '📞';
+
+                                return (
+                                    <div key={speakerId} className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+                                        <div className={`sticky top-0 z-10 p-3 mb-3 rounded-xl border ${color.bg} ${color.border} backdrop-blur-sm`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xl">{speakerIcon}</span>
+                                                    <span className={`font-bold ${color.text}`}>{speakerLabel}</span>
+                                                    {isActiveSpeaker && (
+                                                        <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${color.badge} ${color.text}`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${color.accent} animate-pulse`} />
+                                                            Hablando
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className={`text-xs font-mono ${color.text} opacity-70`}>{speakerTranscript.length} msgs</span>
+                                            </div>
+                                        </div>
+                                        <div ref={idx === 0 ? speaker1Ref : speaker2Ref} className="flex-1 overflow-y-auto scrollbar-hide pr-1 min-w-0">
+                                            <div className="flex flex-col justify-end min-h-full min-w-0">
+                                                {speakerTranscript.map((node: TranscriptionNode, index: number) => (
+                                                    <div key={node.id || index} className="mb-2 w-full" style={{ minWidth: 0 }}>
+                                                        <div className={`diarization-message relative p-3 rounded-lg border transition-all duration-200 w-full ${node.isFinal ? `${color.bg} ${color.border}` : 'bg-white/5 border-white/10'}`}>
+                                                            <p className={`text-wrap-force leading-snug text-sm font-medium w-full ${node.isFinal ? '' : 'opacity-60'}`}
+                                                                style={{
+                                                                    color: subtitleStyle.color,
+                                                                    fontFamily: subtitleStyle.fontFamily,
+                                                                    whiteSpace: 'pre-wrap',
+                                                                    overflowWrap: 'anywhere',
+                                                                    wordBreak: 'break-all',
+                                                                    minWidth: 0
+                                                                }}>
+                                                                {node.text}
+                                                                {!node.isFinal && <span className={`inline-block w-1.5 h-3 ml-1 ${color.accent} animate-pulse align-middle rounded-sm`} />}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <div ref={idx === 0 ? speaker1EndRef : speaker2EndRef} className="h-2" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 ) : (
                     /* Standard View */

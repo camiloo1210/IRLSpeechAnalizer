@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { SonioxClient } from '../api/client';
 
 // Resample audio from source sample rate to target sample rate (16kHz for Soniox)
@@ -31,11 +32,25 @@ export const useAudioStream = (client: SonioxClient | null) => {
     const audioContextRef = useRef<AudioContext | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const { isStreaming } = useStore();
+    const selectedAudioDevice = useSettingsStore((state) => state.selectedAudioDevice);
 
+    // Request permission and get audio stream when device changes
     useEffect(() => {
         async function getPermission() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Stop previous stream if exists
+                if (streamRef.current) {
+                    streamRef.current.getTracks().forEach(track => track.stop());
+                }
+
+                // Configure audio constraints with selected device
+                const audioConstraints: MediaStreamConstraints = {
+                    audio: selectedAudioDevice
+                        ? { deviceId: { exact: selectedAudioDevice } }
+                        : true
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
                 streamRef.current = stream;
                 setHasPermission(true);
             } catch (err) {
@@ -57,7 +72,7 @@ export const useAudioStream = (client: SonioxClient | null) => {
                 audioContextRef.current.close();
             }
         };
-    }, []);
+    }, [selectedAudioDevice]);
 
     useEffect(() => {
         if (isStreaming && hasPermission && streamRef.current && client) {

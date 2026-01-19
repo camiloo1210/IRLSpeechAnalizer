@@ -10,6 +10,8 @@ export const useSoniox = () => {
     const transcriptionLanguage = useSettingsStore((state) => state.transcriptionLanguage);
     const sonioxMode = useSettingsStore((state) => state.sonioxMode);
     const translationTargetLanguage = useSettingsStore((state) => state.translationTargetLanguage);
+    const diarizationLanguages = useSettingsStore((state) => state.diarizationLanguages);
+    const diarizationDivisionMode = useSettingsStore((state) => state.diarizationDivisionMode);
 
     useEffect(() => {
         // Initialize client once on mount or when settings change
@@ -22,6 +24,7 @@ export const useSoniox = () => {
                 language: transcriptionLanguage,
                 mode: sonioxMode,
                 targetLanguage: translationTargetLanguage,
+                diarizationDivisionMode: diarizationDivisionMode,
             });
             newClient.connect();
             setClient(newClient);
@@ -34,7 +37,7 @@ export const useSoniox = () => {
             }
             setClient(null);
         };
-    }, [apiKey, transcriptionLanguage, sonioxMode, translationTargetLanguage]);
+    }, [apiKey, transcriptionLanguage, sonioxMode, translationTargetLanguage, diarizationLanguages, diarizationDivisionMode]);
 
     useEffect(() => {
         if (client) {
