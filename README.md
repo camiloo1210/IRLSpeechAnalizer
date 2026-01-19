@@ -20,10 +20,12 @@
 |---------|-------------|
 | 🎤 **Real-Time Transcription** | Ultra-low latency speech-to-text with Soniox AI |
 | 👥 **Speaker Diarization** | Automatic speaker separation with call center optimized UI |
-| 🌐 **Multi-Language Support** | Automatic language detection per speaker |
-| 🔄 **Live Translation** | Real-time translation between languages |
+| 🌐 **Multi-Language Support** | Configurable language detection for diarization mode |
+| 🔄 **Live Translation** | Real-time translation between languages (side-by-side view) |
 | 📱 **Responsive Design** | Works on desktop and mobile devices |
 | 🎨 **Customizable Subtitles** | Fonts, sizes, and colors |
+| ⚡ **On-Demand Connection** | WebSocket connects only when recording starts (saves resources) |
+| 🔔 **Connection Status** | Real-time connection indicator and disconnection alerts |
 
 ---
 

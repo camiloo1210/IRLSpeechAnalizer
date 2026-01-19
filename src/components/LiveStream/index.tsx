@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import type { TranscriptionNode } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
 import { useAudioStream } from '../../hooks/useAudioStream';
-import { Mic, Settings, Terminal, Download, Trash2, X, Bug } from 'lucide-react';
+import { Mic, Settings, Terminal, Download, Trash2, X, Bug, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../ui/button';
 import { useSoniox } from '../../hooks/useSoniox';
@@ -25,6 +25,7 @@ export const LiveStream = () => {
     const transcript = useStore((state) => state.transcript);
     const isStreaming = useStore((state) => state.isStreaming);
     const isConnected = useStore((state) => state.isConnected);
+    const showDisconnectedPopup = useStore((state) => state.showDisconnectedPopup);
     const setStreaming = useStore((state) => state.setStreaming);
     const clearTranscript = useStore((state) => state.clearTranscript);
 
@@ -185,6 +186,50 @@ export const LiveStream = () => {
         <div className="flex flex-col h-screen w-full bg-background text-foreground font-sans overflow-hidden selection:bg-indigo-500/30">
             {/* Settings Dialog */}
             <SettingsDialog />
+
+            {/* Disconnected Popup */}
+            <AnimatePresence>
+                {showDisconnectedPopup && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                    >
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-zinc-900 border border-red-500/30 rounded-2xl p-8 max-w-md mx-4 shadow-2xl shadow-red-500/10"
+                        >
+                            <div className="flex flex-col items-center text-center space-y-6">
+                                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
+                                    <AlertTriangle className="w-8 h-8 text-red-400" />
+                                </div>
+                                <div className="space-y-2">
+                                    <h2 className="text-xl font-bold text-white">
+                                        Conexión Perdida
+                                    </h2>
+                                    <p className="text-zinc-400">
+                                        Se ha cerrado la conexión con la API de transcripción.
+                                    </p>
+                                </div>
+                                <div className="w-full p-4 rounded-xl bg-zinc-800/50 border border-zinc-700">
+                                    <p className="text-sm text-zinc-300">
+                                        Presiona <kbd className="px-2 py-1 mx-1 bg-zinc-700 rounded font-mono text-white">F5</kbd> para recargar y continuar.
+                                    </p>
+                                </div>
+                                <Button
+                                    onClick={() => window.location.reload()}
+                                    className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-6 rounded-xl"
+                                >
+                                    Recargar Página
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Background Gradient Mesh */}
             <div className="fixed inset-0 z-0 opacity-20 pointer-events-none">

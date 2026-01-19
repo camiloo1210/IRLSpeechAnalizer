@@ -37,6 +37,7 @@ export interface SonioxClientOptions {
     mode: SonioxMode;
     targetLanguage?: TranscriptionLanguage;
     diarizationDivisionMode?: DiarizationDivisionMode;
+    diarizationLanguages?: TranscriptionLanguage[];
 }
 
 export class SonioxClient {
@@ -46,6 +47,7 @@ export class SonioxClient {
     private mode: SonioxMode;
     private targetLanguage: TranscriptionLanguage;
     private diarizationDivisionMode: DiarizationDivisionMode;
+    private diarizationLanguages: TranscriptionLanguage[];
     private configSent: boolean = false;
     // For translation mode: track which audio segment we've seen the original for
     // When we get a second final with same final_audio_proc_ms, it's the translation
@@ -57,6 +59,7 @@ export class SonioxClient {
         this.mode = options.mode;
         this.targetLanguage = options.targetLanguage || 'en';
         this.diarizationDivisionMode = options.diarizationDivisionMode || 'speaker';
+        this.diarizationLanguages = options.diarizationLanguages || ['es', 'en'];
     }
 
     private buildConfig(): Record<string, unknown> {
@@ -90,13 +93,14 @@ export class SonioxClient {
         } else if (this.mode === 'diarization') {
             // Enable speaker diarization - Soniox uses flat boolean parameter
             config.enable_speaker_diarization = true;
-            // Enable language identification for multilingual call center support
-            // This allows detecting different languages per speaker
+            // Usar los idiomas seleccionados por el usuario para diarization
+            if (this.diarizationLanguages.length > 0) {
+                config.language_hints = this.diarizationLanguages;
+                // No usar strict para permitir detección flexible
+                config.language_hints_strict = false;
+            }
+            // Enable language identification for multilingual support
             config.enable_language_identification = true;
-            // Remove any strict language hints to allow multi-language detection
-            delete config.language_hints;
-            delete config.language_hints_strict;
-
         }
 
         return config;
@@ -111,22 +115,36 @@ export class SonioxClient {
         }
     }
 
-    connect() {
+    // Promise that resolves when WebSocket is open and ready
+    private connectionPromise: Promise<void> | null = null;
+    private connectionResolver: (() => void) | null = null;
+
+    connect(): Promise<void> {
         // Don't try to connect with invalid keys
         if (!this.apiKey || this.apiKey === 'demo_key') {
             console.warn('[SonioxClient] No valid API key provided. Skipping connection.');
-            return;
+            return Promise.reject(new Error('Invalid API key'));
         }
 
-        if (this.socket) return;
+        if (this.socket) {
+            return this.connectionPromise || Promise.resolve();
+        }
+
+        this.connectionPromise = new Promise((resolve) => {
+            this.connectionResolver = resolve;
+        });
 
         try {
             this.socket = new WebSocket(`${SONIOX_API_URL}?api_key=${this.apiKey}`);
 
             this.socket.onopen = () => {
                 useStore.getState().setConnected(true);
-
-                // Config will be sent when startStream() is called
+                // Enviar la configuración inmediatamente al conectar
+                this.sendConfig();
+                // Resolver la promesa para indicar que estamos listos
+                if (this.connectionResolver) {
+                    this.connectionResolver();
+                }
             };
 
             this.socket.onmessage = (event) => {
@@ -354,7 +372,10 @@ export class SonioxClient {
             };
         } catch (error) {
             console.error('[SonioxClient] Failed to create WebSocket:', error);
+            return Promise.reject(error);
         }
+
+        return this.connectionPromise;
     }
 
     startStream() {
@@ -378,7 +399,8 @@ export class SonioxClient {
     }
 
     sendAudioChunk(chunk: Int16Array) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        // Solo enviar audio si el socket está conectado Y la config ya se envió
+        if (this.socket && this.socket.readyState === WebSocket.OPEN && this.configSent) {
             this.socket.send(chunk);
         }
     }
