@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import type { TranscriptionNode } from '../../store/useStore';
 import { useSettingsStore, FONT_SIZE_OPTIONS } from '../../store/settingsStore';
@@ -153,9 +153,15 @@ export const LiveStream = () => {
         }
     }, [transcript, sonioxMode]);
 
-    // Render a single transcript node
-    const renderTranscriptNode = (node: typeof transcript[0], index: number, speakerColor?: typeof SPEAKER_COLORS[0]) => (
-        <div key={node.id || index} className="group mb-4 w-full" style={{ minWidth: 0 }}>
+    // Memoized Transcript Item Component to prevent re-renders of unchanged historical items
+    const TranscriptItem = useMemo(() => React.memo(({ node, speakerColor, sonioxMode, fontSizeClass, subtitleStyle }: {
+        node: TranscriptionNode,
+        speakerColor?: typeof SPEAKER_COLORS[0],
+        sonioxMode: string,
+        fontSizeClass: string,
+        subtitleStyle: any
+    }) => (
+        <div className="group mb-4 w-full" style={{ minWidth: 0 }}>
             <div className={`diarization-message relative p-4 rounded-xl border transition-all duration-300 w-full ${node.isFinal
                 ? speakerColor ? `${speakerColor.bg} ${speakerColor.border}` : 'bg-secondary/40 border-white/5 hover:bg-secondary/60'
                 : 'bg-indigo-500/10 border-indigo-500/20'
@@ -181,7 +187,18 @@ export const LiveStream = () => {
                 </div>
             </div>
         </div>
-    );
+    ), (prev, next) => {
+        // Custom comparison: only re-render if IS_FINAL changes or TEXT changes
+        // This is critical for performance: old final nodes should NEVER re-render
+        if (prev.node.isFinal && next.node.isFinal && prev.node.text === next.node.text && prev.node.id === next.node.id) {
+            return true;
+        }
+        return prev.node === next.node &&
+            prev.sonioxMode === next.sonioxMode &&
+            prev.fontSizeClass === next.fontSizeClass &&
+            prev.subtitleStyle === next.subtitleStyle &&
+            prev.speakerColor === next.speakerColor;
+    }), []);
 
     return (
         <div className="flex flex-col h-screen w-full bg-background text-foreground font-sans overflow-hidden selection:bg-indigo-500/30">
@@ -492,7 +509,15 @@ export const LiveStream = () => {
                                 </motion.div>
                             )}
 
-                            {transcript.map((node, index) => renderTranscriptNode(node, index))}
+                            {transcript.map((node, index) => (
+                                <TranscriptItem
+                                    key={node.id || index}
+                                    node={node}
+                                    sonioxMode={sonioxMode}
+                                    fontSizeClass={fontSizeClass}
+                                    subtitleStyle={subtitleStyle}
+                                />
+                            ))}
                         </AnimatePresence>
                         <div ref={endRef} className="h-4" />
                     </div>

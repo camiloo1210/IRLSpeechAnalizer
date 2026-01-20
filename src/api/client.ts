@@ -342,6 +342,32 @@ export class SonioxClient {
                                     }
 
                                     // Process each language group separately
+
+                                    // NEW: Detect and finalize "abandoned" languages
+                                    // If we have a non-final chunk for a language that is NOT in the current tokens,
+                                    // it means Soniox has moved on (or revoked it). We should finalize it to save the text
+                                    // instead of letting it dangle and be overwritten later.
+                                    const activeLanguages = new Set(tokenGroups.map(g => g.language));
+                                    const currentTranscript = useStore.getState().transcript;
+
+                                    // Check the tail of the transcript for abandoned chunks
+                                    // We scan backwards until we hit a reasonable limit to avoid perf issues
+                                    for (let i = currentTranscript.length - 1; i >= Math.max(0, currentTranscript.length - 10); i--) {
+                                        const node = currentTranscript[i];
+                                        if (!node.isFinal && node.language && !activeLanguages.has(node.language)) {
+                                            // Only finalize if we have a stable new stream (current tokens > 3)
+                                            // to avoid finalizing on glitchy/empty frames
+                                            if (data.tokens.length > 3) {
+                                                addDebugLog('[DIARIZATION] Finalizing abandoned language chunk', {
+                                                    language: node.language,
+                                                    text: node.text.substring(0, 30),
+                                                    currentActiveLanguages: Array.from(activeLanguages)
+                                                });
+                                                store.finalizeChunksForLanguage(node.language);
+                                            }
+                                        }
+                                    }
+
                                     for (const group of tokenGroups) {
                                         const groupText = group.text.trim();
                                         if (!groupText) continue;

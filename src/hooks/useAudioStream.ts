@@ -3,34 +3,11 @@ import { useStore } from '../store/useStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { SonioxClient } from '../api/client';
 
-// Resample audio from source sample rate to target sample rate (16kHz for Soniox)
-function resampleBuffer(inputBuffer: Float32Array, inputSampleRate: number, outputSampleRate: number): Float32Array {
-    if (inputSampleRate === outputSampleRate) {
-        return inputBuffer;
-    }
-
-    const ratio = inputSampleRate / outputSampleRate;
-    const outputLength = Math.round(inputBuffer.length / ratio);
-    const outputBuffer = new Float32Array(outputLength);
-
-    for (let i = 0; i < outputLength; i++) {
-        const srcIndex = i * ratio;
-        const srcIndexFloor = Math.floor(srcIndex);
-        const srcIndexCeil = Math.min(srcIndexFloor + 1, inputBuffer.length - 1);
-        const t = srcIndex - srcIndexFloor;
-
-        // Linear interpolation
-        outputBuffer[i] = inputBuffer[srcIndexFloor] * (1 - t) + inputBuffer[srcIndexCeil] * t;
-    }
-
-    return outputBuffer;
-}
-
 export const useAudioStream = (client: SonioxClient | null) => {
     const [hasPermission, setHasPermission] = useState(false);
-    const streamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
-    const processorRef = useRef<ScriptProcessorNode | null>(null);
+    const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
     const { isStreaming } = useStore();
     const selectedAudioDevice = useSettingsStore((state) => state.selectedAudioDevice);
 
@@ -46,8 +23,17 @@ export const useAudioStream = (client: SonioxClient | null) => {
                 // Configure audio constraints with selected device
                 const audioConstraints: MediaStreamConstraints = {
                     audio: selectedAudioDevice
-                        ? { deviceId: { exact: selectedAudioDevice } }
-                        : true
+                        ? {
+                            deviceId: { exact: selectedAudioDevice },
+                            // Requesting capabilities doesn't guarantee the browser respects them for the CONTEXT,
+                            // but it helps suggest the preferred hardware configuration.
+                            channelCount: 1,
+                            sampleRate: 16000
+                        }
+                        : {
+                            channelCount: 1,
+                            sampleRate: 16000
+                        }
                 };
 
                 const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
@@ -65,9 +51,6 @@ export const useAudioStream = (client: SonioxClient | null) => {
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
             }
-            if (processorRef.current) {
-                processorRef.current.disconnect();
-            }
             if (audioContextRef.current) {
                 audioContextRef.current.close();
             }
@@ -75,52 +58,73 @@ export const useAudioStream = (client: SonioxClient | null) => {
     }, [selectedAudioDevice]);
 
     useEffect(() => {
-        if (isStreaming && hasPermission && streamRef.current && client) {
-            // Create AudioContext with native sample rate (don't force 16kHz)
-            // This avoids the "different sample-rate" error on some browsers/devices
-            if (!audioContextRef.current) {
-                audioContextRef.current = new AudioContext();
+        let isCleaningUp = false;
+
+        const startProcessing = async () => {
+            if (isStreaming && hasPermission && streamRef.current && client) {
+                try {
+                    // 1. Create AudioContext with explicit 16kHz sample rate
+                    // This forces the browser to handle high-quality resampling natively!
+                    const ctx = new AudioContext({ sampleRate: 16000 });
+                    audioContextRef.current = ctx;
+
+                    // 2. Add the AudioWorklet module
+                    // We use an absolute path relative to root to ensure it loads correctly
+                    // Note: Vite usually serves 'public' at root
+                    await ctx.audioWorklet.addModule('/audio-processor.js');
+
+                    if (isCleaningUp) {
+                        ctx.close();
+                        return;
+                    }
+
+                    const source = ctx.createMediaStreamSource(streamRef.current);
+                    const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
+
+                    workletNode.port.onmessage = (event) => {
+                        if (!useStore.getState().isStreaming) return;
+                        // The worklet sends us Int16Array directly
+                        const pcm16 = event.data;
+                        client.sendAudioChunk(pcm16);
+                    };
+
+                    source.connect(workletNode);
+                    // Worklet usually doesn't need to connect to destination unless we want to hear it
+                    // But some browsers might aggressive garbage collect if not connected or processing
+                    // connecting to destination might cause feedback loop if not careful!
+                    // Safest is to just let it run. source -> worklet is a valid graph.
+
+                    workletNodeRef.current = workletNode;
+
+                } catch (error) {
+                    console.error('Failed to start audio processor:', error);
+                }
             }
+        };
 
-            const ctx = audioContextRef.current;
-            const nativeSampleRate = ctx.sampleRate;
-            const targetSampleRate = 16000; // Soniox requires 16kHz
-
-            const source = ctx.createMediaStreamSource(streamRef.current);
-
-            // Create ScriptProcessorNode with appropriate buffer size
-            const bufferSize = 4096;
-            const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
-            processorRef.current = processor;
-
-            processor.onaudioprocess = (e) => {
-                if (!useStore.getState().isStreaming) return;
-
-                const inputData = e.inputBuffer.getChannelData(0);
-
-                // Resample to 16kHz if needed
-                const resampledData = resampleBuffer(inputData, nativeSampleRate, targetSampleRate);
-
-                // Convert Float32 to Int16 (PCM)
-                const pcm16 = new Int16Array(resampledData.length);
-                for (let i = 0; i < resampledData.length; i++) {
-                    const s = Math.max(-1, Math.min(1, resampledData[i]));
-                    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-                }
-                client.sendAudioChunk(pcm16);
-            };
-
-            source.connect(processor);
-            processor.connect(ctx.destination); // Needed for the processor to run
-
-            return () => {
-                source.disconnect();
-                if (processorRef.current) {
-                    processorRef.current.disconnect();
-                    processorRef.current = null;
-                }
-            };
+        if (isStreaming) {
+            startProcessing();
+        } else {
+            // Cleanup when stopping stream
+            if (workletNodeRef.current) {
+                workletNodeRef.current.disconnect();
+                workletNodeRef.current = null;
+            }
+            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                audioContextRef.current.close();
+                audioContextRef.current = null;
+            }
         }
+
+        return () => {
+            isCleaningUp = true;
+            if (workletNodeRef.current) {
+                workletNodeRef.current.disconnect();
+            }
+            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                audioContextRef.current.close();
+            }
+        };
     }, [isStreaming, hasPermission, client]);
 
     return { hasPermission };
